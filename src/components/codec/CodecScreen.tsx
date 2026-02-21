@@ -5,8 +5,15 @@ import FrequencyDisplay from "./FrequencyDisplay";
 import ChatMessage from "./ChatMessage";
 import ScanlineOverlay from "./ScanlineOverlay";
 import SignalLostOverlay from "./SignalLostOverlay";
+import CodecErrorDialog, { type ErrorType } from "./CodecErrorDialog";
 import CompetitorPicker from "./CompetitorPicker";
-import { sendMessage, fetchCompetitorDrilldown } from "@/services/MockApiService";
+import {
+  sendMessage,
+  fetchCompetitorDrilldown,
+  CompanyNotFoundError,
+  NoCompetitorsError,
+  SystemFailureError,
+} from "@/services/MockApiService";
 import type { CompetitorData } from "@/types/codec";
 import colonelImg from "@/assets/colonel.png";
 import snakeImg from "@/assets/snake.png";
@@ -36,8 +43,13 @@ const CodecScreen = () => {
   const [activeNewId, setActiveNewId] = useState<number | null>(null);
   const [signalLost, setSignalLost] = useState(false);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
-  // Competitor selection state
   const [selectableCompetitors, setSelectableCompetitors] = useState<CompetitorData[] | null>(null);
+
+  // Error dialog state
+  const [errorDialogVisible, setErrorDialogVisible] = useState(false);
+  const [errorType, setErrorType] = useState<ErrorType | null>(null);
+  const [errorCompanyName, setErrorCompanyName] = useState<string | undefined>(undefined);
+
   const chatRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
@@ -80,6 +92,46 @@ const CodecScreen = () => {
     }
   };
 
+  const handleError = (error: unknown) => {
+    setIsThinking(false);
+
+    if (error instanceof CompanyNotFoundError) {
+      setErrorType("company_not_found");
+      setErrorCompanyName(error.companyName);
+      setErrorDialogVisible(true);
+      addMessage({
+        sender: "SYSTEM",
+        text: `⊘ INTEL-404: No records found for "${error.companyName.toUpperCase()}".`,
+        isReasoning: true,
+        reasoningStatus: "complete",
+      });
+    } else if (error instanceof NoCompetitorsError) {
+      setErrorType("no_competitors");
+      setErrorCompanyName(error.companyName);
+      setErrorDialogVisible(true);
+      addMessage({
+        sender: "SYSTEM",
+        text: `◇ INTEL-204: "${error.companyName.toUpperCase()}" located, but no active competitors detected.`,
+        isReasoning: true,
+        reasoningStatus: "complete",
+      });
+    } else if (error instanceof SystemFailureError) {
+      setErrorType("system_failure");
+      setErrorCompanyName(undefined);
+      setErrorDialogVisible(true);
+      addMessage({
+        sender: "SYSTEM",
+        text: "⚠ SYS-500: Critical system failure. All intelligence nodes offline.",
+        isReasoning: true,
+        reasoningStatus: "complete",
+      });
+    } else {
+      // Legacy fallback — signal lost overlay
+      setSignalLost(true);
+      setLastFailedMessage(null);
+    }
+  };
+
   const processMessage = async (userMessage: string) => {
     setIsProcessing(true);
     setIsThinking(true);
@@ -97,9 +149,7 @@ const CodecScreen = () => {
       setColonelSpeaking(true);
       addMessage({ sender: "COLONEL", text: response.finalAnalysis });
 
-      // If competitors returned, show the picker instead of just listing them
       if (response.competitors && response.competitors.length > 0) {
-        // Show brief intel cards
         for (const comp of response.competitors) {
           await new Promise<void>((resolve) => setTimeout(resolve, 300));
           addMessage({
@@ -107,15 +157,12 @@ const CodecScreen = () => {
             text: `[${comp.threat_level}] ${comp.name} — ${comp.intel}`,
           });
         }
-        // Enable the picker
         setSelectableCompetitors(response.competitors);
       }
 
       setLastFailedMessage(null);
-    } catch {
-      setIsThinking(false);
-      setSignalLost(true);
-      setLastFailedMessage(userMessage);
+    } catch (error) {
+      handleError(error);
     } finally {
       setIsProcessing(false);
       setTimeout(() => setColonelSpeaking(false), 2000);
@@ -140,33 +187,19 @@ const CodecScreen = () => {
       setColonelSpeaking(true);
       addMessage({ sender: "COLONEL", text: drilldown.finalAnalysis });
 
-      // Show detailed intel
       await new Promise<void>((resolve) => setTimeout(resolve, 400));
-      addMessage({
-        sender: "INTEL",
-        text: `MARKET SHARE: ${drilldown.details.marketShare}`,
-      });
+      addMessage({ sender: "INTEL", text: `MARKET SHARE: ${drilldown.details.marketShare}` });
 
       await new Promise<void>((resolve) => setTimeout(resolve, 300));
-      addMessage({
-        sender: "INTEL",
-        text: `KEY PRODUCTS: ${drilldown.details.keyProducts.join(" | ")}`,
-      });
+      addMessage({ sender: "INTEL", text: `KEY PRODUCTS: ${drilldown.details.keyProducts.join(" | ")}` });
 
       await new Promise<void>((resolve) => setTimeout(resolve, 300));
-      addMessage({
-        sender: "INTEL",
-        text: `WEAKNESSES: ${drilldown.details.weaknesses.join(" | ")}`,
-      });
+      addMessage({ sender: "INTEL", text: `WEAKNESSES: ${drilldown.details.weaknesses.join(" | ")}` });
 
       await new Promise<void>((resolve) => setTimeout(resolve, 400));
-      addMessage({
-        sender: "COLONEL",
-        text: `RECOMMENDATION: ${drilldown.details.recommendation}`,
-      });
-    } catch {
-      setIsThinking(false);
-      setSignalLost(true);
+      addMessage({ sender: "COLONEL", text: `RECOMMENDATION: ${drilldown.details.recommendation}` });
+    } catch (error) {
+      handleError(error);
     } finally {
       setIsProcessing(false);
       setTimeout(() => setColonelSpeaking(false), 2000);
@@ -197,6 +230,12 @@ const CodecScreen = () => {
     <div className="flex flex-col h-screen bg-background overflow-hidden relative">
       <ScanlineOverlay />
       <SignalLostOverlay visible={signalLost} onDismiss={handleRetry} />
+      <CodecErrorDialog
+        visible={errorDialogVisible}
+        errorType={errorType}
+        companyName={errorCompanyName}
+        onDismiss={() => setErrorDialogVisible(false)}
+      />
 
       {/* Codec Header */}
       <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12 pt-4 pb-2 px-4">
@@ -236,7 +275,6 @@ const CodecScreen = () => {
           ))}
         </AnimatePresence>
 
-        {/* Competitor Picker */}
         {selectableCompetitors && !isProcessing && (
           <CompetitorPicker
             competitors={selectableCompetitors}
