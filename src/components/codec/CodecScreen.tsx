@@ -5,7 +5,9 @@ import FrequencyDisplay from "./FrequencyDisplay";
 import ChatMessage from "./ChatMessage";
 import ScanlineOverlay from "./ScanlineOverlay";
 import SignalLostOverlay from "./SignalLostOverlay";
-import { sendMessage } from "@/services/MockApiService";
+import CompetitorPicker from "./CompetitorPicker";
+import { sendMessage, fetchCompetitorDrilldown } from "@/services/MockApiService";
+import type { CompetitorData } from "@/types/codec";
 import colonelImg from "@/assets/colonel.png";
 import snakeImg from "@/assets/snake.png";
 
@@ -29,12 +31,13 @@ const CodecScreen = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [colonelSpeaking, setColonelSpeaking] = useState(false);
-  // TODO: Replace initial memory with value from backend (e.g., GET /api/status → context_usage)
   const [memoryUsage, setMemoryUsage] = useState(0);
   const [tokenCount, setTokenCount] = useState(0);
   const [activeNewId, setActiveNewId] = useState<number | null>(null);
   const [signalLost, setSignalLost] = useState(false);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
+  // Competitor selection state
+  const [selectableCompetitors, setSelectableCompetitors] = useState<CompetitorData[] | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
@@ -46,7 +49,7 @@ const CodecScreen = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [messages, selectableCompetitors, scrollToBottom]);
 
   const addMessage = useCallback((msg: Omit<Message, "id">) => {
     const id = nextId.current++;
@@ -61,55 +64,51 @@ const CodecScreen = () => {
     );
   }, []);
 
+  const showReasoningSteps = async (reasoning: { step: string; status: string }[]) => {
+    for (const step of reasoning) {
+      const id = nextId.current++;
+      setColonelSpeaking(true);
+      setMessages((prev) => [
+        ...prev,
+        { id, sender: "SYSTEM", text: step.step, isReasoning: true, reasoningStatus: "pending" },
+      ]);
+      setActiveNewId(id);
+      const stepTokens = Math.ceil(step.step.length / 4);
+      setTokenCount((prev) => prev + stepTokens);
+      await new Promise<void>((resolve) => setTimeout(resolve, 600 + step.step.length * 18));
+      updateReasoningStatus(id, "complete");
+    }
+  };
+
   const processMessage = async (userMessage: string) => {
     setIsProcessing(true);
     setIsThinking(true);
+    setSelectableCompetitors(null);
 
     try {
       const response = await sendMessage(userMessage);
 
-      // Show reasoning steps sequentially with pending → complete status
-      for (const step of response.reasoning) {
-        const id = nextId.current++;
-        setColonelSpeaking(true);
-        setMessages((prev) => [
-          ...prev,
-          { id, sender: "SYSTEM", text: step.step, isReasoning: true, reasoningStatus: "pending" },
-        ]);
-        setActiveNewId(id);
-
-        // Increment tokens as each reasoning step "processes"
-        const stepTokens = Math.ceil(step.step.length / 4);
-        setTokenCount((prev) => prev + stepTokens);
-
-        await new Promise<void>((resolve) => setTimeout(resolve, 600 + step.step.length * 18));
-        updateReasoningStatus(id, "complete");
-      }
-
-      // Thinking done, now delivering response
+      await showReasoningSteps(response.reasoning);
       setIsThinking(false);
 
-      // Add final response tokens
-      // TODO: Use response.tokensUsed from backend instead of estimating
       setTokenCount((prev) => prev + response.tokensUsed);
-
-      // Update memory from API response
-      // TODO: This will come from backend context window usage
       setMemoryUsage(response.intelLevel);
 
-      // Final response
       setColonelSpeaking(true);
       addMessage({ sender: "COLONEL", text: response.finalAnalysis });
 
-      // Show competitor data if present
-      if (response.competitors) {
+      // If competitors returned, show the picker instead of just listing them
+      if (response.competitors && response.competitors.length > 0) {
+        // Show brief intel cards
         for (const comp of response.competitors) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 400));
+          await new Promise<void>((resolve) => setTimeout(resolve, 300));
           addMessage({
             sender: "INTEL",
-            text: `[${comp.threat_level}] ${comp.name} — Status: ${comp.status}. ${comp.intel}`,
+            text: `[${comp.threat_level}] ${comp.name} — ${comp.intel}`,
           });
         }
+        // Enable the picker
+        setSelectableCompetitors(response.competitors);
       }
 
       setLastFailedMessage(null);
@@ -123,10 +122,62 @@ const CodecScreen = () => {
     }
   };
 
+  const handleCompetitorSelect = async (competitor: CompetitorData) => {
+    setSelectableCompetitors(null);
+    addMessage({ sender: "SNAKE", text: `Colonel, give me everything on ${competitor.name}.` });
+    setIsProcessing(true);
+    setIsThinking(true);
+
+    try {
+      const drilldown = await fetchCompetitorDrilldown(competitor.id);
+
+      await showReasoningSteps(drilldown.reasoning);
+      setIsThinking(false);
+
+      setTokenCount((prev) => prev + drilldown.tokensUsed);
+      setMemoryUsage(drilldown.intelLevel);
+
+      setColonelSpeaking(true);
+      addMessage({ sender: "COLONEL", text: drilldown.finalAnalysis });
+
+      // Show detailed intel
+      await new Promise<void>((resolve) => setTimeout(resolve, 400));
+      addMessage({
+        sender: "INTEL",
+        text: `MARKET SHARE: ${drilldown.details.marketShare}`,
+      });
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 300));
+      addMessage({
+        sender: "INTEL",
+        text: `KEY PRODUCTS: ${drilldown.details.keyProducts.join(" | ")}`,
+      });
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 300));
+      addMessage({
+        sender: "INTEL",
+        text: `WEAKNESSES: ${drilldown.details.weaknesses.join(" | ")}`,
+      });
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 400));
+      addMessage({
+        sender: "COLONEL",
+        text: `RECOMMENDATION: ${drilldown.details.recommendation}`,
+      });
+    } catch {
+      setIsThinking(false);
+      setSignalLost(true);
+    } finally {
+      setIsProcessing(false);
+      setTimeout(() => setColonelSpeaking(false), 2000);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
     const userMessage = input.trim();
     setInput("");
+    setSelectableCompetitors(null);
     addMessage({ sender: "SNAKE", text: userMessage });
     await processMessage(userMessage);
   };
@@ -184,6 +235,15 @@ const CodecScreen = () => {
             </motion.div>
           ))}
         </AnimatePresence>
+
+        {/* Competitor Picker */}
+        {selectableCompetitors && !isProcessing && (
+          <CompetitorPicker
+            competitors={selectableCompetitors}
+            onSelect={handleCompetitorSelect}
+            disabled={isProcessing}
+          />
+        )}
 
         {isProcessing && (
           <motion.div

@@ -8,16 +8,30 @@ export interface CompetitorReasoning {
 }
 
 export interface CompetitorData {
+  id: string;
   name: string;
   threat_level: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
   status: string;
   intel: string;
 }
 
+export interface CompetitorDrilldown {
+  reasoning: CompetitorReasoning[];
+  finalAnalysis: string;
+  intelLevel: number;
+  tokensUsed: number;
+  details: {
+    marketShare: string;
+    keyProducts: string[];
+    weaknesses: string[];
+    recommendation: string;
+  };
+}
+
 export interface CompetitorResponse {
   reasoning: CompetitorReasoning[];
   finalAnalysis: string;
-  intelLevel: number; // 0-100 for the memory/progress bar
+  intelLevel: number;
   // TODO: Replace with actual token usage from backend (e.g., response.usage.total_tokens)
   tokensUsed: number;
   competitors?: CompetitorData[];
