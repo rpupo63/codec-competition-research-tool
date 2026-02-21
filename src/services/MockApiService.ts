@@ -19,24 +19,39 @@ function maybeThrow(): void {
   }
 }
 
+/** Rough token estimate: ~4 chars per token */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 /**
  * Fetches competitor intel from the briefing system.
  * TODO: Replace with fetch("http://localhost:8080/api/competitors", { method: "POST", ... })
+ * TODO: Use response.usage.total_tokens for real token count
  */
 export const fetchCompetitorIntel = async (_query?: string): Promise<CompetitorResponse> => {
   await delay(SIMULATED_DELAY_MS);
   maybeThrow();
 
+  const finalAnalysis =
+    "Snake, listen carefully. We've identified several hostile operatives in the AO. Each one represents a significant threat to our mission objectives. I'm transmitting the dossiers now. Study them carefully — knowing your enemy is half the battle.";
+
+  const reasoning = [
+    { step: "Triangulating rival frequencies...", status: "complete" as const },
+    { step: "Accessing DARPA shadow-net...", status: "complete" as const },
+    { step: "Cross-referencing field intelligence...", status: "complete" as const },
+    { step: "Decrypting classified dossiers...", status: "complete" as const },
+  ];
+
+  const totalText = reasoning.map((r) => r.step).join("") + finalAnalysis;
+
   return {
-    reasoning: [
-      { step: "Triangulating rival frequencies...", status: "complete" },
-      { step: "Accessing DARPA shadow-net...", status: "complete" },
-      { step: "Cross-referencing field intelligence...", status: "complete" },
-      { step: "Decrypting classified dossiers...", status: "complete" },
-    ],
-    finalAnalysis:
-      "Snake, listen carefully. We've identified several hostile operatives in the AO. Each one represents a significant threat to our mission objectives. I'm transmitting the dossiers now. Study them carefully — knowing your enemy is half the battle.",
+    reasoning,
+    finalAnalysis,
+    // TODO: Replace with actual backend memory/context usage metric
     intelLevel: 87,
+    // TODO: Replace with response.usage.total_tokens from backend
+    tokensUsed: estimateTokens(totalText),
     competitors: [
       {
         name: "SHADOW TECH INC.",
@@ -63,6 +78,7 @@ export const fetchCompetitorIntel = async (_query?: string): Promise<CompetitorR
 /**
  * Sends a general chat message to the Colonel.
  * TODO: Replace with fetch("http://localhost:8080/api/chat", { method: "POST", body: JSON.stringify({ message }), ... })
+ * TODO: Use response.usage.total_tokens for real token count
  */
 export const sendMessage = async (message: string): Promise<ChatResponse> => {
   await delay(800);
@@ -79,12 +95,21 @@ export const sendMessage = async (message: string): Promise<ChatResponse> => {
     return fetchCompetitorIntel(message);
   }
 
+  const finalAnalysis = `Snake, I read you. "${message}" — that's noted. Stay focused on the mission. If you need intel on competitors, just say the word. We have extensive dossiers ready for your review. Remember, the fate of the mission rests on your shoulders.`;
+
+  const reasoning = [
+    { step: "Processing transmission...", status: "complete" as const },
+    { step: "Verifying clearance level...", status: "complete" as const },
+  ];
+
+  const totalText = reasoning.map((r) => r.step).join("") + finalAnalysis;
+
   return {
-    reasoning: [
-      { step: "Processing transmission...", status: "complete" },
-      { step: "Verifying clearance level...", status: "complete" },
-    ],
-    finalAnalysis: `Snake, I read you. "${message}" — that's noted. Stay focused on the mission. If you need intel on competitors, just say the word. We have extensive dossiers ready for your review. Remember, the fate of the mission rests on your shoulders.`,
+    reasoning,
+    finalAnalysis,
+    // TODO: Replace with actual backend memory/context usage metric
     intelLevel: 42,
+    // TODO: Replace with response.usage.total_tokens from backend
+    tokensUsed: estimateTokens(totalText),
   };
 };

@@ -18,6 +18,8 @@ export interface CompetitorResponse {
   reasoning: CompetitorReasoning[];
   finalAnalysis: string;
   intelLevel: number; // 0-100 for the memory/progress bar
+  // TODO: Replace with actual token usage from backend (e.g., response.usage.total_tokens)
+  tokensUsed: number;
   competitors?: CompetitorData[];
 }
 
@@ -30,5 +32,7 @@ export interface ChatResponse {
   reasoning: CompetitorReasoning[];
   finalAnalysis: string;
   intelLevel: number;
+  // TODO: Replace with actual token usage from backend (e.g., response.usage.total_tokens)
+  tokensUsed: number;
   competitors?: CompetitorData[];
 }
