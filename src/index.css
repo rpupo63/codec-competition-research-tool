@@ -151,3 +151,10 @@
 .animate-cursor-blink {
   animation: typewriter-cursor 0.8s step-end infinite;
 }
+
+@keyframes noiseShift {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(-5px, 3px); }
+  66% { transform: translate(3px, -5px); }
+  100% { transform: translate(-3px, 2px); }
+}

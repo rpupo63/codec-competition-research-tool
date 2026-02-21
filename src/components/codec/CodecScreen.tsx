@@ -4,7 +4,9 @@ import PortraitFrame from "./PortraitFrame";
 import FrequencyDisplay from "./FrequencyDisplay";
 import ChatMessage from "./ChatMessage";
 import ScanlineOverlay from "./ScanlineOverlay";
+import SignalLostOverlay from "./SignalLostOverlay";
 import { sendMessage } from "@/services/MockApiService";
+import type { CompetitorReasoning } from "@/types/codec";
 import colonelImg from "@/assets/colonel.png";
 import snakeImg from "@/assets/snake.png";
 
@@ -13,6 +15,7 @@ interface Message {
   sender: string;
   text: string;
   isReasoning?: boolean;
+  reasoningStatus?: 'pending' | 'complete';
 }
 
 const CodecScreen = () => {
@@ -28,6 +31,8 @@ const CodecScreen = () => {
   const [colonelSpeaking, setColonelSpeaking] = useState(false);
   const [memoryUsage, setMemoryUsage] = useState(23);
   const [activeNewId, setActiveNewId] = useState<number | null>(null);
+  const [signalLost, setSignalLost] = useState(false);
+  const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
@@ -48,32 +53,40 @@ const CodecScreen = () => {
     return id;
   }, []);
 
-  const handleSend = async () => {
-    if (!input.trim() || isProcessing) return;
+  const updateReasoningStatus = useCallback((msgId: number, status: 'pending' | 'complete') => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, reasoningStatus: status } : m))
+    );
+  }, []);
 
-    const userMessage = input.trim();
-    setInput("");
-    addMessage({ sender: "SNAKE", text: userMessage });
+  const processMessage = async (userMessage: string) => {
     setIsProcessing(true);
     setMemoryUsage((prev) => Math.min(prev + Math.random() * 15, 98));
 
     try {
       const response = await sendMessage(userMessage);
 
-      // Show reasoning steps sequentially
-      for (const step of response.reasoning_steps) {
-        await new Promise<void>((resolve) => {
-          setColonelSpeaking(true);
-          const id = nextId.current++;
-          setMessages((prev) => [...prev, { id, sender: "SYSTEM", text: step, isReasoning: true }]);
-          setActiveNewId(id);
-          setTimeout(resolve, 800 + step.length * 20);
-        });
+      // Show reasoning steps sequentially with pending → complete status
+      const reasoningIds: number[] = [];
+      for (const step of response.reasoning) {
+        const id = nextId.current++;
+        reasoningIds.push(id);
+        setColonelSpeaking(true);
+        setMessages((prev) => [
+          ...prev,
+          { id, sender: "SYSTEM", text: `${step.step}`, isReasoning: true, reasoningStatus: "pending" },
+        ]);
+        setActiveNewId(id);
+
+        // Wait, then mark complete
+        await new Promise<void>((resolve) => setTimeout(resolve, 600 + step.step.length * 18));
+        updateReasoningStatus(id, "complete");
       }
 
       // Final response
       setColonelSpeaking(true);
-      addMessage({ sender: "COLONEL", text: response.response });
+      addMessage({ sender: "COLONEL", text: response.finalAnalysis });
+      setMemoryUsage(response.intelLevel);
 
       // Show competitor data if present
       if (response.competitors) {
@@ -86,12 +99,28 @@ const CodecScreen = () => {
         }
       }
 
-      setMemoryUsage((prev) => Math.min(prev + Math.random() * 10, 98));
+      setLastFailedMessage(null);
     } catch {
-      addMessage({ sender: "SYSTEM", text: "ERROR: Transmission interrupted. Retry." });
+      setSignalLost(true);
+      setLastFailedMessage(userMessage);
     } finally {
       setIsProcessing(false);
       setTimeout(() => setColonelSpeaking(false), 2000);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || isProcessing) return;
+    const userMessage = input.trim();
+    setInput("");
+    addMessage({ sender: "SNAKE", text: userMessage });
+    await processMessage(userMessage);
+  };
+
+  const handleRetry = async () => {
+    setSignalLost(false);
+    if (lastFailedMessage) {
+      await processMessage(lastFailedMessage);
     }
   };
 
@@ -102,6 +131,7 @@ const CodecScreen = () => {
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden relative">
       <ScanlineOverlay />
+      <SignalLostOverlay visible={signalLost} onDismiss={handleRetry} />
 
       {/* Codec Header */}
       <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12 pt-4 pb-2 px-4">
@@ -132,6 +162,7 @@ const CodecScreen = () => {
                 text={msg.text}
                 isNew={msg.id === activeNewId}
                 isReasoning={msg.isReasoning}
+                reasoningStatus={msg.reasoningStatus}
                 onComplete={() => {
                   if (msg.id === activeNewId) setActiveNewId(null);
                 }}
