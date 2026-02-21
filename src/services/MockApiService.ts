@@ -6,17 +6,8 @@ import type { ChatResponse, CompetitorResponse, CompetitorDrilldown } from "@/ty
 
 const SIMULATED_DELAY_MS = 2000;
 
-// Simulate random failure (10% chance) to test error states
-const FAILURE_RATE = 0.1;
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function maybeThrow(): void {
-  if (Math.random() < FAILURE_RATE) {
-    throw new Error("SIGNAL_LOST");
-  }
 }
 
 /** Rough token estimate: ~4 chars per token */
@@ -24,13 +15,45 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+// ─── Custom Error Classes ───────────────────────────────────────────────────
+
+export class CompanyNotFoundError extends Error {
+  companyName: string;
+  constructor(companyName: string) {
+    super("COMPANY_NOT_FOUND");
+    this.name = "CompanyNotFoundError";
+    this.companyName = companyName;
+  }
+}
+
+export class NoCompetitorsError extends Error {
+  companyName: string;
+  constructor(companyName: string) {
+    super("NO_COMPETITORS");
+    this.name = "NoCompetitorsError";
+    this.companyName = companyName;
+  }
+}
+
+export class SystemFailureError extends Error {
+  constructor() {
+    super("SYSTEM_FAILURE");
+    this.name = "SystemFailureError";
+  }
+}
+
+// ─── Test Keywords ──────────────────────────────────────────────────────────
+// "apple"   → ✅ Success: finds company + 3 competitors
+// "phantom" → ❌ Company not found (INTEL-404)
+// "kodak"   → ⚠️ Company found but no competitors (INTEL-204)
+// "chaos"   → 💥 Total system failure (SYS-500)
+
 /**
  * Fetches competitor intel — hardcoded Apple competitors for testing.
  * TODO: Replace with fetch("http://localhost:8080/api/competitors", { method: "POST", ... })
  */
 export const fetchCompetitorIntel = async (_query?: string): Promise<CompetitorResponse> => {
   await delay(SIMULATED_DELAY_MS);
-  maybeThrow();
 
   const finalAnalysis =
     "Snake, we've intercepted communications regarding APPLE INC. Three primary hostile operatives have been identified in their sector. Select a target for deep reconnaissance.";
@@ -86,7 +109,7 @@ const DRILLDOWN_DATA: Record<string, CompetitorDrilldown> = {
     finalAnalysis:
       "Snake, Samsung is Apple's most dangerous rival. They control the entire vertical — from chip fabrication to consumer devices. Their Galaxy S series directly contests iPhone market share, and their semiconductor division supplies components to half the industry, including Apple itself. That's a significant leverage point.",
     intelLevel: 91,
-    tokensUsed: 0, // will be calculated
+    tokensUsed: 0,
     details: {
       marketShare: "19.4% global smartphone market (Q4 2025)",
       keyProducts: ["Galaxy S25 Ultra", "Galaxy Z Fold 6", "Exynos chipsets", "OLED display panels"],
@@ -136,14 +159,12 @@ const DRILLDOWN_DATA: Record<string, CompetitorDrilldown> = {
  */
 export const fetchCompetitorDrilldown = async (competitorId: string): Promise<CompetitorDrilldown> => {
   await delay(1500);
-  maybeThrow();
 
   const data = DRILLDOWN_DATA[competitorId];
   if (!data) {
-    throw new Error("SIGNAL_LOST");
+    throw new SystemFailureError();
   }
 
-  // Calculate tokens
   const allText = data.reasoning.map((r) => r.step).join("") + data.finalAnalysis +
     JSON.stringify(data.details);
   data.tokensUsed = estimateTokens(allText);
@@ -154,12 +175,36 @@ export const fetchCompetitorDrilldown = async (competitorId: string): Promise<Co
 /**
  * Sends a general chat message to the Colonel.
  * TODO: Replace with fetch("http://localhost:8080/api/chat", { method: "POST", body: JSON.stringify({ message }), ... })
+ *
+ * Test keywords:
+ *   "apple"   → success with competitors
+ *   "phantom" → CompanyNotFoundError
+ *   "kodak"   → NoCompetitorsError
+ *   "chaos"   → SystemFailureError
  */
 export const sendMessage = async (message: string): Promise<ChatResponse> => {
-  await delay(800);
-  maybeThrow();
-
   const lower = message.toLowerCase();
+
+  // ── FAILURE PATH: Total system failure ──
+  if (lower.includes("chaos")) {
+    await delay(1200);
+    throw new SystemFailureError();
+  }
+
+  // ── FAILURE PATH: Company not found ──
+  if (lower.includes("phantom")) {
+    await delay(1500);
+    // We still do some "reasoning" before the error
+    throw new CompanyNotFoundError("Phantom Corp");
+  }
+
+  // ── FAILURE PATH: Company found, no competitors ──
+  if (lower.includes("kodak")) {
+    await delay(1800);
+    throw new NoCompetitorsError("Kodak");
+  }
+
+  // ── SUCCESS PATH: Competitor query ──
   const isCompetitorQuery =
     lower.includes("competitor") ||
     lower.includes("rival") ||
@@ -170,6 +215,9 @@ export const sendMessage = async (message: string): Promise<ChatResponse> => {
   if (isCompetitorQuery) {
     return fetchCompetitorIntel(message);
   }
+
+  // ── DEFAULT: General chat ──
+  await delay(800);
 
   const finalAnalysis = `Snake, I read you. "${message}" — that's noted. Stay focused on the mission. If you need intel on competitors, just say the word. We have extensive dossiers ready for your review. Remember, the fate of the mission rests on your shoulders.`;
 
