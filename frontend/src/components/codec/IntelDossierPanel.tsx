@@ -9,6 +9,7 @@ interface IntelDossierPanelProps {
   dossier: IntelDossier;
   visible: boolean;
   onClose: () => void;
+  onDownloadDossier?: () => void;
 }
 
 const TABS = [
@@ -19,7 +20,7 @@ const TABS = [
 
 type TabId = typeof TABS[number]["id"];
 
-const IntelDossierPanel = ({ dossier, visible, onClose }: IntelDossierPanelProps) => {
+const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: IntelDossierPanelProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("matrix");
 
   return (
@@ -50,12 +51,22 @@ const IntelDossierPanel = ({ dossier, visible, onClose }: IntelDossierPanelProps
                 <div className="text-[10px] text-destructive tracking-[0.3em] font-bold">
                   {dossier.classification}
                 </div>
-                <button
-                  onClick={onClose}
-                  className="text-muted-foreground hover:text-foreground text-xs tracking-widest transition-colors px-2 py-1 codec-border"
-                >
-                  ✕ CLOSE
-                </button>
+                <div className="flex items-center gap-2">
+                  {onDownloadDossier && (
+                    <button
+                      onClick={onDownloadDossier}
+                      className="text-muted-foreground hover:text-foreground hover:text-glow text-xs tracking-widest transition-colors px-2 py-1 codec-border"
+                    >
+                      ▼ DOWNLOAD
+                    </button>
+                  )}
+                  <button
+                    onClick={onClose}
+                    className="text-muted-foreground hover:text-foreground text-xs tracking-widest transition-colors px-2 py-1 codec-border"
+                  >
+                    ✕ CLOSE
+                  </button>
+                </div>
               </div>
 
               <div className="text-lg font-bold text-foreground text-glow-strong tracking-wider">
