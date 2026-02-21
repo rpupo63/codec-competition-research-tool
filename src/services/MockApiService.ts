@@ -2,7 +2,7 @@
 // TODO: Replace all mock functions with real fetch calls to your Go Chi backend
 // TODO: Base URL: http://localhost:8080
 
-import type { ChatResponse, CompetitorResponse, CompetitorDrilldown } from "@/types/codec";
+import type { ChatResponse, CompetitorResponse, CompetitorDrilldown, IntelDossier } from "@/types/codec";
 
 const SIMULATED_DELAY_MS = 2000;
 
@@ -47,6 +47,96 @@ export class SystemFailureError extends Error {
 // "phantom" → ❌ Company not found (INTEL-404)
 // "kodak"   → ⚠️ Company found but no competitors (INTEL-204)
 // "chaos"   → 💥 Total system failure (SYS-500)
+
+// ─── Intel Dossier: Apple ───────────────────────────────────────────────────
+// TODO: Replace with data from backend GET /api/dossier/:companyId
+const APPLE_DOSSIER: IntelDossier = {
+  classification: "TOP SECRET // FOXHOUND EYES ONLY",
+  targetCompany: "APPLE INC.",
+  operationName: "OPERATION ORCHARD STRIKE",
+  dateCompiled: "2026-02-20T00:00:00Z",
+  matrix: [
+    {
+      name: "SAMSUNG ELECTRONICS",
+      threat_level: "CRITICAL",
+      marketShare: "19.4%",
+      keyStrength: "Vertical integration — chips to screens to devices",
+      primaryProduct: "Galaxy S25 / Z Fold 6",
+      aiCapability: "MODERATE",
+    },
+    {
+      name: "GOOGLE / ALPHABET",
+      threat_level: "HIGH",
+      marketShare: "3.8% HW / 72% OS",
+      keyStrength: "Android ecosystem + Gemini AI platform",
+      primaryProduct: "Pixel 10 / Android OS",
+      aiCapability: "CRITICAL",
+    },
+    {
+      name: "MICROSOFT CORP",
+      threat_level: "HIGH",
+      marketShare: "75% Desktop / 23% Cloud",
+      keyStrength: "Enterprise dominance + OpenAI partnership",
+      primaryProduct: "M365 Copilot / Surface Pro",
+      aiCapability: "CRITICAL",
+    },
+  ],
+  vulnerabilities: [
+    {
+      competitor: "SAMSUNG",
+      gaps: [
+        "Software ecosystem is fragmented — no unified app store loyalty",
+        "Brand perception in premium tier still trails Apple in Western markets",
+        "Heavy Android dependency gives Google leverage over their platform",
+        "Bixby AI assistant significantly behind Siri and Gemini",
+      ],
+    },
+    {
+      competitor: "GOOGLE",
+      gaps: [
+        "Hardware margins are razor-thin — Pixel is a loss-leader",
+        "Privacy scandals erode consumer trust in data-heavy services",
+        "Pixel adoption is niche outside US, Japan, India",
+        "No wearable or tablet ecosystem to rival Apple Watch + iPad",
+      ],
+    },
+    {
+      competitor: "MICROSOFT",
+      gaps: [
+        "Zero mobile presence — Windows Phone is long dead",
+        "Surface hardware is niche with no carrier partnerships",
+        "Consumer brand loyalty far below Apple in personal devices",
+        "Gaming division (Xbox) has no crossover into productivity",
+      ],
+    },
+  ],
+  strikePlan: [
+    {
+      codename: "SILENT VIPER",
+      objective: "Neutralize Samsung's foldable advantage before mainstream adoption",
+      target: "SAMSUNG ELECTRONICS",
+      approach: "Accelerate iPhone Fold development. Secure exclusive OLED supply contracts to constrain Samsung's own display allocation. Undercut Galaxy Z pricing with carrier subsidies.",
+      timeline: "Q3 2026 — Q1 2027",
+      priority: "ALPHA",
+    },
+    {
+      codename: "GREY FOX",
+      objective: "Counter Google's AI integration before Gemini becomes default",
+      target: "GOOGLE / ALPHABET",
+      approach: "Deploy Apple Intelligence across all devices with on-device processing as privacy differentiator. Partner with Anthropic or Mistral for frontier model access. Block Gemini default status in Safari.",
+      timeline: "Q2 2026 — Q4 2026",
+      priority: "ALPHA",
+    },
+    {
+      codename: "PHANTOM PAIN",
+      objective: "Defend enterprise Mac market from Copilot + Surface erosion",
+      target: "MICROSOFT CORP",
+      approach: "Launch Apple Business+ tier with native AI productivity tools. Deepen Xcode + Swift AI coding assistant. Offer enterprise MDM at zero cost to lock in fleet contracts.",
+      timeline: "Q4 2026 — Q2 2027",
+      priority: "BRAVO",
+    },
+  ],
+};
 
 /**
  * Fetches competitor intel — hardcoded Apple competitors for testing.
@@ -95,6 +185,7 @@ export const fetchCompetitorIntel = async (_query?: string): Promise<CompetitorR
         intel: "Enterprise dominance. Surface line challenges iPad. Azure competes with iCloud infrastructure.",
       },
     ],
+    dossier: APPLE_DOSSIER,
   };
 };
 
