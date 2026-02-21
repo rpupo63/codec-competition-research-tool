@@ -3,7 +3,8 @@
 // TODO: This contract maps to the Go Chi backend endpoints
 
 export interface CompetitorReasoning {
-  step: string;     // e.g., "Analyzing signal..."
+  step: string;       // e.g., "Analyzing signal..."
+  summary: string;    // e.g., "Checking SEC filings and patent databases for corporate entity match."
   status: 'pending' | 'complete';
 }
 

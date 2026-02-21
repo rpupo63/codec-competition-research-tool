@@ -59,10 +59,10 @@ export const fetchCompetitorIntel = async (_query?: string): Promise<CompetitorR
     "Snake, we've intercepted communications regarding APPLE INC. Three primary hostile operatives have been identified in their sector. Select a target for deep reconnaissance.";
 
   const reasoning = [
-    { step: "Intercepting corporate frequencies...", status: "complete" as const },
-    { step: "Accessing DARPA shadow-net...", status: "complete" as const },
-    { step: "Cross-referencing market intelligence...", status: "complete" as const },
-    { step: "Compiling target dossiers...", status: "complete" as const },
+    { step: "Intercepting corporate frequencies...", summary: "Scanning all known corporate communication bands for signals matching 'Apple Inc.' entity identifiers and registered trade names.", status: "complete" as const },
+    { step: "Accessing DARPA shadow-net...", summary: "Querying classified industry databases including SEC filings, patent registries, and M&A records to verify corporate structure.", status: "complete" as const },
+    { step: "Cross-referencing market intelligence...", summary: "Comparing Apple's product lines, revenue segments, and market positioning against all entities in adjacent sectors to identify direct rivalries.", status: "complete" as const },
+    { step: "Compiling target dossiers...", summary: "Aggregating threat assessments, market share data, and strategic postures for each confirmed competitor into actionable briefings.", status: "complete" as const },
   ];
 
   const totalText = reasoning.map((r) => r.step).join("") + finalAnalysis;
@@ -102,9 +102,9 @@ export const fetchCompetitorIntel = async (_query?: string): Promise<CompetitorR
 const DRILLDOWN_DATA: Record<string, CompetitorDrilldown> = {
   samsung: {
     reasoning: [
-      { step: "Accessing Samsung R&D intercepts...", status: "complete" },
-      { step: "Analyzing Galaxy product pipeline...", status: "complete" },
-      { step: "Decrypting semiconductor division intel...", status: "complete" },
+      { step: "Accessing Samsung R&D intercepts...", summary: "Pulling patent filings, internal roadmap leaks, and supply chain contracts from Samsung's semiconductor and mobile divisions.", status: "complete" },
+      { step: "Analyzing Galaxy product pipeline...", summary: "Mapping the Galaxy S, Z Fold, and A-series release cadence against Apple's iPhone cycle to identify overlap windows.", status: "complete" },
+      { step: "Decrypting semiconductor division intel...", summary: "Samsung fabricates chips for competitors including Apple. Analyzing leverage this creates in pricing negotiations and supply constraints.", status: "complete" },
     ],
     finalAnalysis:
       "Snake, Samsung is Apple's most dangerous rival. They control the entire vertical — from chip fabrication to consumer devices. Their Galaxy S series directly contests iPhone market share, and their semiconductor division supplies components to half the industry, including Apple itself. That's a significant leverage point.",
@@ -119,9 +119,9 @@ const DRILLDOWN_DATA: Record<string, CompetitorDrilldown> = {
   },
   google: {
     reasoning: [
-      { step: "Tapping into Mountain View signals...", status: "complete" },
-      { step: "Analyzing Pixel hardware trajectory...", status: "complete" },
-      { step: "Decrypting AI/ML initiative dossiers...", status: "complete" },
+      { step: "Tapping into Mountain View signals...", summary: "Monitoring Google's public API changelogs, developer conference announcements, and Chromium commit history for strategic direction.", status: "complete" },
+      { step: "Analyzing Pixel hardware trajectory...", summary: "Pixel sales remain niche but serve as reference hardware for Android. Evaluating whether Tensor chips signal a vertical integration play.", status: "complete" },
+      { step: "Decrypting AI/ML initiative dossiers...", summary: "Gemini models are being embedded across Search, Workspace, and Android. Assessing how this undermines Apple's Siri and on-device ML strategy.", status: "complete" },
     ],
     finalAnalysis:
       "Snake, Google is playing a long game. They control the OS that powers 72% of the world's smartphones. Their AI capabilities — Gemini, TPU hardware, search dominance — represent an existential threat to Apple's services revenue. The Pixel line is a trojan horse for their AI-first hardware vision.",
@@ -136,9 +136,9 @@ const DRILLDOWN_DATA: Record<string, CompetitorDrilldown> = {
   },
   microsoft: {
     reasoning: [
-      { step: "Infiltrating Redmond data centers...", status: "complete" },
-      { step: "Analyzing Surface division performance...", status: "complete" },
-      { step: "Decrypting Azure cloud expansion plans...", status: "complete" },
+      { step: "Infiltrating Redmond data centers...", summary: "Reviewing Azure growth metrics, enterprise adoption rates, and Microsoft 365 engagement data to gauge competitive overlap with Apple's ecosystem.", status: "complete" },
+      { step: "Analyzing Surface division performance...", summary: "Surface revenue is flat but the line serves as a halo product for Windows + Copilot. Evaluating threat to MacBook and iPad in enterprise.", status: "complete" },
+      { step: "Decrypting Azure cloud expansion plans...", summary: "Microsoft's OpenAI partnership gives them exclusive access to frontier models. Assessing how Copilot integration changes the productivity landscape Apple competes in.", status: "complete" },
     ],
     finalAnalysis:
       "Snake, Microsoft has pivoted from a direct consumer hardware competitor to an enterprise and AI powerhouse. Their Copilot integration across Office 365 threatens Apple's productivity narrative. Azure cloud infrastructure and the OpenAI partnership give them an AI moat that Apple currently lacks.",
@@ -222,8 +222,8 @@ export const sendMessage = async (message: string): Promise<ChatResponse> => {
   const finalAnalysis = `Snake, I read you. "${message}" — that's noted. Stay focused on the mission. If you need intel on competitors, just say the word. We have extensive dossiers ready for your review. Remember, the fate of the mission rests on your shoulders.`;
 
   const reasoning = [
-    { step: "Processing transmission...", status: "complete" as const },
-    { step: "Verifying clearance level...", status: "complete" as const },
+    { step: "Processing transmission...", summary: "Parsing input for known entity names, industry keywords, and actionable intent to determine the appropriate intelligence pipeline.", status: "complete" as const },
+    { step: "Verifying clearance level...", summary: "Confirming operator has sufficient access level for the requested data classification. General queries require LEVEL-2 clearance.", status: "complete" as const },
   ];
 
   const totalText = reasoning.map((r) => r.step).join("") + finalAnalysis;

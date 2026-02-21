@@ -6,11 +6,12 @@ interface ChatMessageProps {
   isNew?: boolean;
   isReasoning?: boolean;
   reasoningStatus?: 'pending' | 'complete';
+  reasoningSummary?: string;
   onComplete?: () => void;
   onTick?: () => void;
 }
 
-const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoningStatus, onComplete, onTick }: ChatMessageProps) => {
+const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoningStatus, reasoningSummary, onComplete, onTick }: ChatMessageProps) => {
   const senderColor = sender === "SNAKE" ? "text-muted-foreground" : "text-foreground";
 
   const statusIndicator = isReasoning
@@ -32,6 +33,12 @@ const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoni
           text
         )}
       </span>
+      {/* Reasoning summary — shown once the step is complete */}
+      {isReasoning && reasoningSummary && reasoningStatus === "complete" && (
+        <div className="mt-1 ml-1 text-xs text-muted-foreground/70 leading-relaxed tracking-wide">
+          └ {reasoningSummary}
+        </div>
+      )}
     </div>
   );
 };
