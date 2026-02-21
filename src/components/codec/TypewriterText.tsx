@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface TypewriterTextProps {
   text: string;
   speed?: number;
   onComplete?: () => void;
+  onTick?: () => void;
 }
 
-const TypewriterText = ({ text, speed = 25, onComplete }: TypewriterTextProps) => {
+const TypewriterText = ({ text, speed = 25, onComplete, onTick }: TypewriterTextProps) => {
   const [displayedText, setDisplayedText] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -20,12 +21,13 @@ const TypewriterText = ({ text, speed = 25, onComplete }: TypewriterTextProps) =
       const timer = setTimeout(() => {
         setDisplayedText((prev) => prev + text[currentIndex]);
         setCurrentIndex((prev) => prev + 1);
+        onTick?.();
       }, speed);
       return () => clearTimeout(timer);
     } else if (currentIndex === text.length && text.length > 0) {
       onComplete?.();
     }
-  }, [currentIndex, text, speed, onComplete]);
+  }, [currentIndex, text, speed, onComplete, onTick]);
 
   return (
     <span>
