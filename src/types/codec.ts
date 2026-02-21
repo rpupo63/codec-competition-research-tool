@@ -29,25 +29,58 @@ export interface CompetitorDrilldown {
   };
 }
 
+export interface DossierMatrixEntry {
+  name: string;
+  threat_level: string;
+  marketShare: string;
+  keyStrength: string;
+  primaryProduct: string;
+  aiCapability: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+}
+
+export interface VulnerabilityEntry {
+  competitor: string;
+  gaps: string[];
+}
+
+export interface StrikePlanEntry {
+  codename: string;
+  objective: string;
+  target: string;
+  approach: string;
+  timeline: string;
+  priority: 'ALPHA' | 'BRAVO' | 'CHARLIE';
+}
+
+export interface IntelDossier {
+  classification: string;
+  targetCompany: string;
+  operationName: string;
+  dateCompiled: string;
+  matrix: DossierMatrixEntry[];
+  vulnerabilities: VulnerabilityEntry[];
+  strikePlan: StrikePlanEntry[];
+}
+
 export interface CompetitorResponse {
   reasoning: CompetitorReasoning[];
   finalAnalysis: string;
   intelLevel: number;
-  // TODO: Replace with actual token usage from backend (e.g., response.usage.total_tokens)
   tokensUsed: number;
   competitors?: CompetitorData[];
+  dossier?: IntelDossier;
 }
 
 export interface ChatRequest {
   message: string;
-  frequency?: string; // codec channel
+  frequency?: string;
 }
 
 export interface ChatResponse {
   reasoning: CompetitorReasoning[];
   finalAnalysis: string;
   intelLevel: number;
-  // TODO: Replace with actual token usage from backend (e.g., response.usage.total_tokens)
   tokensUsed: number;
   competitors?: CompetitorData[];
+  dossier?: IntelDossier;
 }

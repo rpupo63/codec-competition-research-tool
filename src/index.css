@@ -91,6 +91,47 @@
     pointer-events: none;
   }
 
+  /* MGS-style notched corner borders */
+  .mgs-border {
+    position: relative;
+    border: 1px solid hsl(153 40% 20%);
+    clip-path: polygon(
+      0 8px, 8px 0, calc(100% - 8px) 0, 100% 8px,
+      100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px)
+    );
+  }
+
+  .mgs-border-strong {
+    position: relative;
+    border: 2px solid hsl(153 90% 61%);
+    box-shadow: var(--codec-glow);
+    clip-path: polygon(
+      0 10px, 10px 0, calc(100% - 10px) 0, 100% 10px,
+      100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px)
+    );
+  }
+
+  .dossier-header {
+    border-bottom: 2px solid hsl(153 90% 61%);
+    box-shadow: 0 2px 12px hsl(153 90% 61% / 0.2);
+  }
+
+  .dossier-tab {
+    border: 1px solid hsl(153 40% 20%);
+    transition: all 0.2s ease;
+  }
+
+  .dossier-tab:hover {
+    border-color: hsl(153 90% 61% / 0.5);
+    background: hsl(153 90% 61% / 0.05);
+  }
+
+  .dossier-tab-active {
+    border-color: hsl(153 90% 61%);
+    background: hsl(153 90% 61% / 0.1);
+    box-shadow: 0 0 8px hsl(153 90% 61% / 0.3);
+  }
+
   .crt-flicker {
     animation: flicker 0.15s infinite alternate;
   }

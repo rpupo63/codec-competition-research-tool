@@ -7,6 +7,7 @@ import ScanlineOverlay from "./ScanlineOverlay";
 import SignalLostOverlay from "./SignalLostOverlay";
 import CodecErrorDialog, { type ErrorType } from "./CodecErrorDialog";
 import CompetitorPicker from "./CompetitorPicker";
+import IntelDossierPanel from "./IntelDossierPanel";
 import {
   sendMessage,
   fetchCompetitorDrilldown,
@@ -14,7 +15,7 @@ import {
   NoCompetitorsError,
   SystemFailureError,
 } from "@/services/MockApiService";
-import type { CompetitorData } from "@/types/codec";
+import type { CompetitorData, IntelDossier } from "@/types/codec";
 import colonelImg from "@/assets/colonel.png";
 import snakeImg from "@/assets/snake.png";
 
@@ -50,6 +51,10 @@ const CodecScreen = () => {
   const [errorDialogVisible, setErrorDialogVisible] = useState(false);
   const [errorType, setErrorType] = useState<ErrorType | null>(null);
   const [errorCompanyName, setErrorCompanyName] = useState<string | undefined>(undefined);
+
+  // Dossier state
+  const [dossierData, setDossierData] = useState<IntelDossier | null>(null);
+  const [dossierVisible, setDossierVisible] = useState(false);
 
   const chatRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
@@ -163,6 +168,11 @@ const CodecScreen = () => {
         setSelectableCompetitors(response.competitors);
       }
 
+      // Store dossier if available
+      if (response.dossier) {
+        setDossierData(response.dossier);
+      }
+
       setLastFailedMessage(null);
     } catch (error) {
       handleError(error);
@@ -239,6 +249,13 @@ const CodecScreen = () => {
         companyName={errorCompanyName}
         onDismiss={() => setErrorDialogVisible(false)}
       />
+      {dossierData && (
+        <IntelDossierPanel
+          dossier={dossierData}
+          visible={dossierVisible}
+          onClose={() => setDossierVisible(false)}
+        />
+      )}
 
       {/* Codec Header */}
       <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12 pt-4 pb-2 px-4">
@@ -286,6 +303,22 @@ const CodecScreen = () => {
             onSelect={handleCompetitorSelect}
             disabled={isProcessing}
           />
+        )}
+
+        {/* Dossier button — appears when dossier data is available */}
+        {dossierData && !isProcessing && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="my-3"
+          >
+            <button
+              onClick={() => setDossierVisible(true)}
+              className="w-full py-3 text-xs font-bold text-foreground text-glow-strong tracking-[0.3em] uppercase mgs-border-strong bg-accent/20 hover:bg-accent/40 transition-all"
+            >
+              ◈ OPEN INTEL DOSSIER — {dossierData.operationName}
+            </button>
+          </motion.div>
         )}
 
         {isProcessing && (
