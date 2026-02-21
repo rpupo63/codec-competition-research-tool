@@ -24,6 +24,7 @@ interface Message {
   text: string;
   isReasoning?: boolean;
   reasoningStatus?: 'pending' | 'complete';
+  reasoningSummary?: string;
 }
 
 const CodecScreen = () => {
@@ -78,13 +79,13 @@ const CodecScreen = () => {
     );
   }, []);
 
-  const showReasoningSteps = async (reasoning: { step: string; status: string }[]) => {
+  const showReasoningSteps = async (reasoning: { step: string; summary: string; status: string }[]) => {
     for (const step of reasoning) {
       const id = nextId.current++;
       setColonelSpeaking(true);
       setMessages((prev) => [
         ...prev,
-        { id, sender: "SYSTEM", text: step.step, isReasoning: true, reasoningStatus: "pending" },
+        { id, sender: "SYSTEM", text: step.step, isReasoning: true, reasoningStatus: "pending", reasoningSummary: step.summary },
       ]);
       setActiveNewId(id);
       const stepTokens = Math.ceil(step.step.length / 4);
@@ -269,6 +270,7 @@ const CodecScreen = () => {
                 isNew={msg.id === activeNewId}
                 isReasoning={msg.isReasoning}
                 reasoningStatus={msg.reasoningStatus}
+                reasoningSummary={msg.reasoningSummary}
                 onComplete={() => {
                   if (msg.id === activeNewId) setActiveNewId(null);
                 }}
