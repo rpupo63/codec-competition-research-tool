@@ -6,7 +6,6 @@ import ChatMessage from "./ChatMessage";
 import ScanlineOverlay from "./ScanlineOverlay";
 import SignalLostOverlay from "./SignalLostOverlay";
 import { sendMessage } from "@/services/MockApiService";
-import type { CompetitorReasoning } from "@/types/codec";
 import colonelImg from "@/assets/colonel.png";
 import snakeImg from "@/assets/snake.png";
 
@@ -28,8 +27,11 @@ const CodecScreen = () => {
   ]);
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [colonelSpeaking, setColonelSpeaking] = useState(false);
-  const [memoryUsage, setMemoryUsage] = useState(23);
+  // TODO: Replace initial memory with value from backend (e.g., GET /api/status → context_usage)
+  const [memoryUsage, setMemoryUsage] = useState(0);
+  const [tokenCount, setTokenCount] = useState(0);
   const [activeNewId, setActiveNewId] = useState<number | null>(null);
   const [signalLost, setSignalLost] = useState(false);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
@@ -61,32 +63,43 @@ const CodecScreen = () => {
 
   const processMessage = async (userMessage: string) => {
     setIsProcessing(true);
-    setMemoryUsage((prev) => Math.min(prev + Math.random() * 15, 98));
+    setIsThinking(true);
 
     try {
       const response = await sendMessage(userMessage);
 
       // Show reasoning steps sequentially with pending → complete status
-      const reasoningIds: number[] = [];
       for (const step of response.reasoning) {
         const id = nextId.current++;
-        reasoningIds.push(id);
         setColonelSpeaking(true);
         setMessages((prev) => [
           ...prev,
-          { id, sender: "SYSTEM", text: `${step.step}`, isReasoning: true, reasoningStatus: "pending" },
+          { id, sender: "SYSTEM", text: step.step, isReasoning: true, reasoningStatus: "pending" },
         ]);
         setActiveNewId(id);
 
-        // Wait, then mark complete
+        // Increment tokens as each reasoning step "processes"
+        const stepTokens = Math.ceil(step.step.length / 4);
+        setTokenCount((prev) => prev + stepTokens);
+
         await new Promise<void>((resolve) => setTimeout(resolve, 600 + step.step.length * 18));
         updateReasoningStatus(id, "complete");
       }
 
+      // Thinking done, now delivering response
+      setIsThinking(false);
+
+      // Add final response tokens
+      // TODO: Use response.tokensUsed from backend instead of estimating
+      setTokenCount((prev) => prev + response.tokensUsed);
+
+      // Update memory from API response
+      // TODO: This will come from backend context window usage
+      setMemoryUsage(response.intelLevel);
+
       // Final response
       setColonelSpeaking(true);
       addMessage({ sender: "COLONEL", text: response.finalAnalysis });
-      setMemoryUsage(response.intelLevel);
 
       // Show competitor data if present
       if (response.competitors) {
@@ -101,6 +114,7 @@ const CodecScreen = () => {
 
       setLastFailedMessage(null);
     } catch {
+      setIsThinking(false);
       setSignalLost(true);
       setLastFailedMessage(userMessage);
     } finally {
@@ -136,7 +150,7 @@ const CodecScreen = () => {
       {/* Codec Header */}
       <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12 pt-4 pb-2 px-4">
         <PortraitFrame image={colonelImg} name="Colonel" isSpeaking={colonelSpeaking} />
-        <FrequencyDisplay frequency="140.85" memoryUsage={memoryUsage} />
+        <FrequencyDisplay tokenCount={tokenCount} memoryUsage={memoryUsage} isThinking={isThinking} />
         <PortraitFrame image={snakeImg} name="Snake" />
       </div>
 
