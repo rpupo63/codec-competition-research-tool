@@ -66,37 +66,22 @@
     pointer-events: none;
     position: fixed;
     inset: 0;
-    z-index: 50;
-    background:
-      /* Scanlines */
-      repeating-linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0) 0px,
-        rgba(0, 0, 0, 0) 1px,
-        rgba(0, 0, 0, 0.3) 1px,
-        rgba(0, 0, 0, 0.3) 2px
-      ),
-      /* Subtle green tint on the lines */
-      repeating-linear-gradient(
-        0deg,
-        transparent 0px,
-        transparent 3px,
-        hsl(153 90% 61% / 0.04) 3px,
-        hsl(153 90% 61% / 0.04) 4px
-      );
-    /* CRT vignette — dark corners, brighter center */
-    box-shadow:
-      inset 0 0 120px 40px rgba(0, 0, 0, 0.6),
-      inset 0 0 300px 80px rgba(0, 0, 0, 0.3);
-    animation: crt-scanline-drift 8s linear infinite;
+    z-index: 10;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(0, 0, 0, 0.08) 2px,
+      rgba(0, 0, 0, 0.08) 4px
+    );
   }
 
-  .scanline-overlay::before {
+  .scanline-overlay::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: hsl(153 90% 61% / 0.01);
-    animation: crt-flicker-global 0.08s infinite;
+    box-shadow: inset 0 0 80px 30px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
   }
 
   .crt-flicker {
