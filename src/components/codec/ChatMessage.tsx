@@ -7,9 +7,10 @@ interface ChatMessageProps {
   isReasoning?: boolean;
   reasoningStatus?: 'pending' | 'complete';
   onComplete?: () => void;
+  onTick?: () => void;
 }
 
-const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoningStatus, onComplete }: ChatMessageProps) => {
+const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoningStatus, onComplete, onTick }: ChatMessageProps) => {
   const senderColor = sender === "SNAKE" ? "text-muted-foreground" : "text-foreground";
 
   const statusIndicator = isReasoning
@@ -26,7 +27,7 @@ const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoni
       <span className={`text-sm ${isReasoning ? "text-muted-foreground italic" : "text-foreground"}`}>
         {statusIndicator}
         {isNew ? (
-          <TypewriterText text={text} speed={isReasoning ? 15 : 25} onComplete={onComplete} />
+          <TypewriterText text={text} speed={isReasoning ? 15 : 25} onComplete={onComplete} onTick={onTick} />
         ) : (
           text
         )}

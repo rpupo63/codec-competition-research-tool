@@ -53,10 +53,12 @@ const CodecScreen = () => {
   const chatRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
+  const bottomRef = useRef<HTMLDivElement>(null);
+
   const scrollToBottom = useCallback(() => {
-    if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
   }, []);
 
   useEffect(() => {
@@ -270,6 +272,7 @@ const CodecScreen = () => {
                 onComplete={() => {
                   if (msg.id === activeNewId) setActiveNewId(null);
                 }}
+                onTick={scrollToBottom}
               />
             </motion.div>
           ))}
@@ -292,6 +295,7 @@ const CodecScreen = () => {
             ▶ PROCESSING TRANSMISSION...
           </motion.div>
         )}
+        <div ref={bottomRef} />
       </div>
 
       {/* Input Area */}
