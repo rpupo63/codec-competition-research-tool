@@ -21,7 +21,7 @@ const App = () => (
           <Route element={<AppLayout />}>
             <Route path="/" element={<Index />} />
             <Route path="/operations" element={<OperationsScreen />} />
-            <Route path="/operations/:sessionId" element={<CodecScreen key={window.location.pathname} />} /> {/* New route for individual session */}
+            <Route path="/operations/:sessionId" element={<CodecScreen />} /> {/* New route for individual session */}
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -25,12 +25,6 @@ export interface ConversationTurn {
   content: string;
 }
 
-export interface ReasoningStep {
-  step: string;
-  summary: string;
-  status: string;
-}
-
 export interface CompetitorItem {
   id: string;
   name: string;
@@ -39,26 +33,9 @@ export interface CompetitorItem {
   status: string;
 }
 
-import type { DossierMatrixEntry, VulnerabilityEntry, StrikePlanEntry } from "@/types/codec";
+import type { ChatResponse, CompetitorReasoning as ReasoningStep, IntelDossier } from "@/types/codec";
 
-export interface IntelDossierResponse {
-  classification: string;
-  targetCompany: string;
-  operationName: string;
-  dateCompiled: string;
-  matrix: DossierMatrixEntry[];
-  vulnerabilities: VulnerabilityEntry[];
-  strikePlan: StrikePlanEntry[];
-}
-
-export interface ChatResponse {
-  reasoning: ReasoningStep[];
-  finalAnalysis: string;
-  intelLevel: number;
-  tokensUsed: number;
-  competitors: CompetitorItem[];
-  dossier?: IntelDossierResponse;
-}
+export type IntelDossierResponse = IntelDossier;
 
 export interface SseEvent {
   type: string;

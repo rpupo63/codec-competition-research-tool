@@ -57,13 +57,7 @@ const DRILLDOWN_STUB: CompetitorDrilldown = {
   details: { marketShare: "", keyProducts: [], weaknesses: [], recommendation: "" },
 };
 
-interface CodecScreenProps {
-  sessionId: string;
-  onFirstMessage: (msg: string) => void;
-  onSessionTitleUpdate: (title: string) => void;
-  isLoading: boolean;
-  setIsLoading: (loading: boolean) => void;
-}
+
 
 interface CompetitorTabInfo {
   id: string;
@@ -74,35 +68,14 @@ interface CompetitorTabInfo {
   drilldown?: CompetitorDrilldown;
 }
 
-const CodecScreen = ({
-  onFirstMessage,
-  onSessionTitleUpdate,
-  isLoading, // from context
-  setIsLoading, // from context
-}: CodecScreenProps) => {
+const CodecScreen = () => {
   const { sessionId: sessionIdFromParams } = useParams<{ sessionId: string }>();
   const sessionId = sessionIdFromParams || ""; // Ensure sessionId is always a string
 
+  const { sessions, activeSessionId, triggerSessionTitleSummarization, isLoading, setIsLoading } = useChatSession();
+
   const [isLoadingSession, setIsLoadingSession] = useState(true); // Local loading state for this component's data fetching
 
-  if (!sessionId || isLoading) { // Use global isLoading for overall loading screen
-    return (
-      <div className="flex flex-col h-svh bg-background overflow-hidden relative justify-center items-center">
-        <div className="flex items-center gap-2 py-2">
-          <span className="flex gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-foreground/60 animate-pulse" style={{ animationDelay: "0ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-foreground/60 animate-pulse" style={{ animationDelay: "300ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-foreground/60 animate-pulse" style={{ animationDelay: "600ms" }} />
-          </span>
-          <span className="text-xs text-muted-foreground tracking-wider">
-            LOADING SESSION DETAILS...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  const { sessions, activeSessionId, triggerSessionTitleSummarization } = useChatSession();
   const currentSession = sessions.find((s) => s.id === activeSessionId);
 
   const hasFiredFirstMessage = useRef(false);
@@ -115,13 +88,37 @@ const CodecScreen = ({
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [colonelSpeaking, setColonelSpeaking] = useState(false);
   const [memoryUsage, setMemoryUsage] = useState(0);
   const [tokenCount, setTokenCount] = useState(0);
   const [activeNewId, setActiveNewId] = useState<number | null>(null);
   const [selectableCompetitors, setSelectableCompetitors] = useState<CompetitorData[] | null>(null);
-  const [pendingResponse, setPendingResponse] = useState<ChatResponse | null>(null);
-  const [pendingUserInput, setPendingUserInput] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<{ userInput: string; response?: ChatResponse | null } | null>(null);
+
+  const [errorDialogVisible, setErrorDialogVisible] = useState(false);
+  const [errorType, setErrorType] = useState<ErrorType | null>(null);
+  const [errorCompanyName, setErrorCompanyName] = useState<string | undefined>(undefined);
+
+
+  const [dossierData, setDossierData] = useState<IntelDossier | null>(null);
+  const [dossierVisible, setDossierVisible] = useState(false);
+
+  const chatRef = useRef<HTMLDivElement>(null);
+  const nextId = useRef(1);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const pendingStepMessageIds = useRef<Map<string, number>>(new Map());
+
+  const addMessage = useCallback((tabId: string, msg: Omit<Message, "id">) => {
+    const id = nextId.current++;
+    const newMessage = { ...msg, id };
+    setMessagesByTab((prev) => ({
+      ...prev,
+      [tabId]: [...(prev[tabId] || []), newMessage],
+    }));
+    setActiveNewId(id);
+    return newMessage; // Return the full message object
+  }, []);
 
   const processFinalResponse = useCallback((response: ChatResponse, inputTabId: string) => {
       setIsThinking(false);
@@ -181,7 +178,7 @@ const CodecScreen = ({
             operationName: response.dossier.operationName,
             dateCompiled: response.dossier.dateCompiled,
             matrix: response.dossier.matrix as IntelDossier["matrix"],
-            vulnerabilities: response.dossier.vulnerabilities as IntelDossier["vulnerabilities"],
+            vulnerabilities: response.dossier.vulnerabilities || [],
             strikePlan: response.dossier.strikePlan as IntelDossier["strikePlan"],
           });
         }
@@ -189,17 +186,7 @@ const CodecScreen = ({
     }, [addMessage, currentSession, triggerSessionTitleSummarization, setCompetitorTabs, setMessagesByTab, setSelectableCompetitors, setDossierData, setIsThinking, setTokenCount, setMemoryUsage, setColonelSpeaking]);
 
 
-  const [errorDialogVisible, setErrorDialogVisible] = useState(false);
-  const [errorType, setErrorType] = useState<ErrorType | null>(null);
-  const [errorCompanyName, setErrorCompanyName] = useState<string | undefined>(undefined);
 
-  const [dossierData, setDossierData] = useState<IntelDossier | null>(null);
-  const [dossierVisible, setDossierVisible] = useState(false);
-
-  const chatRef = useRef<HTMLDivElement>(null);
-  const nextId = useRef(1);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const pendingStepMessageIds = useRef<Map<string, number>>(new Map());
 
   const isAiActive = isProcessing || isThinking || colonelSpeaking || activeNewId !== null;
   //const { play, stop } = useAudioPlayback("/mother.wav");
@@ -214,7 +201,7 @@ const CodecScreen = ({
 
   useEffect(() => {
     scrollToBottom();
-  }, [currentMessages, selectableCompetitors, activeTab]);
+  }, [currentMessages, selectableCompetitors, activeTab, scrollToBottom]);
 
   // Load session history when sessionId is a real backend UUID
   useEffect(() => {
@@ -285,7 +272,7 @@ const CodecScreen = ({
             operationName: competitorsData.dossier.operationName,
             dateCompiled: competitorsData.dossier.dateCompiled,
             matrix: competitorsData.dossier.matrix as IntelDossier["matrix"],
-            vulnerabilities: competitorsData.dossier.vulnerabilities as IntelDossier["vulnerabilities"],
+            vulnerabilities: (competitorsData.dossier.vulnerabilities || []) as IntelDossier["vulnerabilities"],
             strikePlan: competitorsData.dossier.strikePlan as IntelDossier["strikePlan"],
           });
         }
@@ -304,16 +291,7 @@ const CodecScreen = ({
     };
   }, [sessionId]);
 
-  const addMessage = useCallback((tabId: string, msg: Omit<Message, "id">) => {
-    const id = nextId.current++;
-    const newMessage = { ...msg, id };
-    setMessagesByTab((prev) => ({
-      ...prev,
-      [tabId]: [...(prev[tabId] || []), newMessage],
-    }));
-    setActiveNewId(id);
-    return newMessage; // Return the full message object
-  }, []);
+
 
   const updateReasoningStatus = useCallback(
     (tabId: string, msgId: number, status: "pending" | "complete") => {
@@ -352,152 +330,161 @@ const CodecScreen = ({
     [],
   );
 
-  const handleError = useCallback((error: unknown, tabId: string = "main") => {
-    setIsThinking(false);
-    // Clear any pending step messages on error
-    pendingStepMessageIds.current.clear();
-
-    if (error instanceof CompanyNotFoundError) {
-      setErrorType("company_not_found");
-      setErrorCompanyName(error.companyName);
-      setErrorDialogVisible(true);
-      addMessage(tabId, {
-        sender: "SYSTEM",
-        text: `⊘ INTEL-404: No records found for "${error.companyName.toUpperCase()}".`,
-        isReasoning: true,
-        reasoningStatus: "complete",
-      });
-    } else if (error instanceof NoCompetitorsError) {
-      setErrorType("no_competitors");
-      setErrorCompanyName(error.companyName);
-      setErrorDialogVisible(true);
-      addMessage(tabId, {
-        sender: "SYSTEM",
-        text: `◇ INTEL-204: "${error.companyName.toUpperCase()}" located, but no active competitors detected.`,
-        isReasoning: true,
-        reasoningStatus: "complete",
-      });
-    } else if (error instanceof SystemFailureError) {
-      setErrorType("system_failure");
-      setErrorCompanyName(undefined);
-      setErrorDialogVisible(true);
-      addMessage(tabId, {
-        sender: "SYSTEM",
-        text: "⚠ SYS-500: Critical system failure. All intelligence nodes offline.",
-        isReasoning: true,
-        reasoningStatus: "complete",
-      });
-    } else {
-      setErrorType("system_failure");
-      setErrorDialogVisible(true);
-    }
-  }, [addMessage]);
-
-  const handleConfirmCompany = useCallback(() => {
-    if (!pendingResponse) return;
-    processFinalResponse(pendingResponse, "main"); // Always main tab for initial query
-    setPendingResponse(null);
-    setPendingUserInput(null);
-    setIsProcessing(false); // Release input
-    setTimeout(() => setColonelSpeaking(false), 2000); // Ensure Colonel stops speaking
-  }, [pendingResponse, processFinalResponse, setIsProcessing, setPendingResponse, setPendingUserInput, setColonelSpeaking]);
-
-  const handleAbortCompany = useCallback(() => {
-    addMessage("main", {
-      sender: "COLONEL",
-      text: "Mission aborted. Target unconfirmed. Re-enter company to try again.",
-    });
-    setPendingResponse(null);
-    setPendingUserInput(null);
-    setIsProcessing(false); // Release input
-    setIsThinking(false); // Ensure thinking is off
-    setTimeout(() => setColonelSpeaking(false), 2000); // Ensure Colonel stops speaking
-  }, [addMessage, setIsProcessing, setIsThinking, setPendingResponse, setPendingUserInput, setColonelSpeaking]);
-
-  const processMessageOnTab = useCallback(async (tabId: string, userMessage: string) => {
-    setIsProcessing(true);
-    setIsThinking(true);
-    setSelectableCompetitors(null);
-    pendingStepMessageIds.current.clear(); // Clear pending steps for a new process
-
-    // Build conversation history from the specific tab (exclude greeting, reasoning, INTEL/SYSTEM)
-    const history: ConversationTurn[] = (messagesByTab[tabId] || [])
-      .filter(
-        (msg) =>
-          msg.id !== 0 &&
-          !msg.isReasoning &&
-          msg.sender !== "INTEL" &&
-          msg.sender !== "SYSTEM",
-      )
-      .map((msg) => ({
-        role: msg.sender === "SNAKE" ? ("user" as const) : ("assistant" as const),
-        content: msg.text,
-      }));
-
-    try {
-      await ApiService.sendMessageStream(
-        userMessage,
-        // onStep: add a reasoning message per step
-        (step, summary, status) => {
-          if (status === "pending") {
-            let messageId = pendingStepMessageIds.current.get(step);
-            if (messageId) {
-              updateMessageContent(tabId, messageId, step, summary, "pending");
-            } else {
-              const newMessage = addMessage(tabId, {
-                sender: "SYSTEM",
-                text: step,
-                isReasoning: true,
-                reasoningStatus: "pending",
-                reasoningSummary: summary,
-              });
-              pendingStepMessageIds.current.set(step, newMessage.id);
+    const handleError = useCallback((error: unknown, tabId: string = "main") => {
+      setIsThinking(false);
+      setIsProcessing(false);
+      setIsConfirming(false);
+      // Clear any pending step messages on error
+      pendingStepMessageIds.current.clear();
+  
+      if (error instanceof CompanyNotFoundError) {
+        setErrorType("company_not_found");
+        setErrorCompanyName(error.companyName);
+        setErrorDialogVisible(true);
+        addMessage(tabId, {
+          sender: "SYSTEM",
+          text: `⊘ INTEL-404: No records found for "${error.companyName.toUpperCase()}".`,
+          isReasoning: true,
+          reasoningStatus: "complete",
+        });
+      } else if (error instanceof NoCompetitorsError) {
+        setErrorType("no_competitors");
+        setErrorCompanyName(error.companyName);
+        setErrorDialogVisible(true);
+        addMessage(tabId, {
+          sender: "SYSTEM",
+          text: `◇ INTEL-204: "${error.companyName.toUpperCase()}" located, but no active competitors detected.`,
+          isReasoning: true,
+          reasoningStatus: "complete",
+        });
+      } else if (error instanceof SystemFailureError) {
+        setErrorType("system_failure");
+        setErrorCompanyName(undefined);
+        setErrorDialogVisible(true);
+        addMessage(tabId, {
+          sender: "SYSTEM",
+          text: "⚠ SYS-500: Critical system failure. All intelligence nodes offline.",
+          isReasoning: true,
+          reasoningStatus: "complete",
+        });
+      } else {
+        setErrorType("system_failure");
+        setErrorDialogVisible(true);
+      }
+    }, [addMessage]);
+  
+    const executeResearch = useCallback(async (tabId: string, userMessage: string, history: ConversationTurn[]) => {
+      setIsProcessing(true);
+      setIsThinking(true);
+      setSelectableCompetitors(null);
+      pendingStepMessageIds.current.clear();
+  
+      try {
+        await ApiService.sendMessageStream(
+          userMessage,
+          (step, summary, status) => { // onStep
+            if (status === "pending") {
+              const messageId = pendingStepMessageIds.current.get(step);
+              if (messageId) {
+                updateMessageContent(tabId, messageId, step, summary, "pending");
+              } else {
+                const newMessage = addMessage(tabId, {
+                  sender: "SYSTEM",
+                  text: step,
+                  isReasoning: true,
+                  reasoningStatus: "pending",
+                  reasoningSummary: summary,
+                });
+                pendingStepMessageIds.current.set(step, newMessage.id);
+              }
+            } else if (status === "complete") {
+              const messageId = pendingStepMessageIds.current.get(step);
+              if (messageId !== undefined) {
+                updateMessageContent(tabId, messageId, step, summary, "complete");
+                pendingStepMessageIds.current.delete(step);
+              }
             }
-          } else if (status === "complete") {
-            const messageId = pendingStepMessageIds.current.get(step);
-            if (messageId !== undefined) {
-              updateMessageContent(tabId, messageId, step, summary, "complete");
-              pendingStepMessageIds.current.delete(step); // Remove from map once complete
-            }
-            }
-        },
-        // onDone: process final response payload
-        (response) => {
-          pendingStepMessageIds.current.clear(); // Clear any remaining pending steps
-          // Instead of processing directly, check if confirmation is needed
-          if (tabId === "main" && response.dossier) {
-            setPendingResponse(response);
-            setPendingUserInput(userMessage); // Capture original user input
-            // Keep isProcessing = true to disable input until confirmation
-          } else {
-            // No dossier or not main tab, process immediately
+          },
+          (response) => { // onDone
+            pendingStepMessageIds.current.clear();
             processFinalResponse(response, tabId);
-            setIsProcessing(false); // Only set false if no confirmation is pending
+            setIsProcessing(false);
+            setIsConfirming(false); // End confirmation process
             setTimeout(() => setColonelSpeaking(false), 2000);
-          }
-        },
-        // onError
-        (error) => {
-          pendingStepMessageIds.current.clear(); // Clear any remaining pending steps
-          handleError(error, tabId);
-        },
-        undefined, // frequency
-        history,
-        sessionId,
-        tabId !== "main" ? tabId : undefined, // competitorId
-      );
-    } finally {
-      // isProcessing is now controlled by confirmation flow if pendingResponse is set
-      // setIsProcessing(false); // This is handled by confirmation or direct call
-      // setIsThinking(false); // This is handled by processFinalResponse or direct call
-      // setTimeout(() => setColonelSpeaking(false), 2000); // This is handled by confirmation or direct call
-    }
-  }, [activeSessionId, currentSession, messagesByTab, sessionId, addMessage, handleError, setSelectableCompetitors, setCompetitorTabs, setMessagesByTab, setDossierData, triggerSessionTitleSummarization, updateMessageContent]);
-
-  const loadCompetitorDrilldown = useCallback(async (tabId: string) => {
-    const tab = competitorTabs.find((t) => t.id === tabId);
-    if (!tab || tab.drilldown) return;
-
+          },
+          (error) => { // onError
+            handleError(error, tabId);
+            setIsConfirming(false); // End confirmation process
+          },
+          undefined,
+          history,
+          sessionId,
+          tabId !== "main" ? tabId : undefined,
+        );
+      } catch (error) {
+        handleError(error, tabId);
+        setIsConfirming(false); // End confirmation process
+      }
+    }, [sessionId, addMessage, handleError, processFinalResponse, updateMessageContent]);
+  
+  
+    const handleConfirmCompany = useCallback(async () => {
+      if (!pendingConfirmation) return;
+  
+      const { userInput } = pendingConfirmation;
+      setIsConfirming(true);
+      setPendingConfirmation(null); // Clear confirmation UI
+  
+      // Build history at the moment of confirmation
+      const history: ConversationTurn[] = (messagesByTab["main"] || [])
+        .filter(msg => msg.id !== 0 && !msg.isReasoning && msg.sender !== "INTEL" && msg.sender !== "SYSTEM")
+        .map(msg => ({
+          role: msg.sender === "SNAKE" ? "user" as const : "assistant" as const,
+          content: msg.text,
+        }));
+  
+      // Remove the user's message that triggered the confirmation, as we're about to process it.
+      history.pop();
+  
+      await executeResearch("main", userInput, history);
+  
+    }, [pendingConfirmation, executeResearch, messagesByTab]);
+  
+    const handleAbortCompany = useCallback(() => {
+      if (!pendingConfirmation) return;
+      addMessage("main", {
+        sender: "COLONEL",
+        text: "Mission aborted. Target unconfirmed. Re-enter company to try again.",
+      });
+      setPendingConfirmation(null);
+      setIsProcessing(false);
+      setIsThinking(false);
+      setIsConfirming(false);
+    }, [addMessage, pendingConfirmation]);
+  
+    const processMessageOnTab = useCallback(async (tabId: string, userMessage: string) => {
+      const history: ConversationTurn[] = (messagesByTab[tabId] || [])
+        .filter(msg => msg.id !== 0 && !msg.isReasoning && msg.sender !== "INTEL" && msg.sender !== "SYSTEM")
+        .map(msg => ({
+          role: msg.sender === "SNAKE" ? "user" as const : "assistant" as const,
+          content: msg.text,
+        }));
+  
+      // If it's the first user message on the main tab, trigger confirmation first.
+      const isInitialQuery = tabId === "main" && history.length === 1;
+  
+      if (isInitialQuery) {
+        setPendingConfirmation({ userInput: userMessage });
+      } else {
+        // For follow-up messages or other tabs, execute research directly.
+        await executeResearch(tabId, userMessage, history);
+      }
+    }, [messagesByTab, executeResearch]);
+  
+    const loadCompetitorDrilldown = useCallback(async (tabId: string) => {
+      const tab = competitorTabs.find((t) => t.id === tabId);
+      if (!tab || tab.drilldown) return;
+  
     addMessage(tabId, {
       sender: "SNAKE",
       text: `Colonel, give me everything on ${tab.name}.`,
@@ -558,8 +545,8 @@ const CodecScreen = ({
                   tokensUsed: drilldown.tokensUsed,
                   details: {
                     marketShare: drilldown.details.marketShare,
-                    keyProducts: drilldown.details.keyProducts,
-                    weaknesses: drilldown.details.weaknesses,
+                    keyProducts: drilldown.details.keyProducts || [],
+                    weaknesses: drilldown.details.weaknesses || [],
                     recommendation: drilldown.details.recommendation,
                   },
                 },
@@ -637,7 +624,7 @@ const CodecScreen = ({
         onDismiss={() => setErrorDialogVisible(false)}
         variant="codec"
       />
-      {dossierData && (
+      {dossierData && currentSession && currentSession.title !== "New operation" && (
         <DossierPanel
           dossier={dossierData}
           visible={dossierVisible}
@@ -712,10 +699,10 @@ const CodecScreen = ({
             ))}
           </AnimatePresence>
 
-          {pendingResponse && pendingResponse.dossier && (
+          {pendingConfirmation && (
             <CompanyConfirmation
-              resolvedName={pendingResponse.dossier.targetCompany}
-              userInput={pendingUserInput ?? ""}
+              resolvedName={pendingConfirmation.response?.dossier?.targetCompany}
+              userInput={pendingConfirmation.userInput}
               onConfirm={handleConfirmCompany}
               onAbort={handleAbortCompany}
             />
@@ -732,7 +719,7 @@ const CodecScreen = ({
             />
           )}
 
-          {activeTab === "main" && dossierData && !isProcessing && (
+          {activeTab === "main" && dossierData && !isProcessing && currentSession && currentSession.title !== "New operation" && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -784,12 +771,12 @@ const CodecScreen = ({
                   ? "Send a message..."
                   : `Ask a follow-up about ${competitorTabs.find((t) => t.id === activeTab)?.name ?? "this target"}...`
               }
-              disabled={isProcessing || pendingResponse !== null}
+              disabled={isProcessing || isConfirming || pendingConfirmation !== null}
               className="flex-1 bg-transparent border-none outline-none text-foreground text-base placeholder:text-foreground/50 font-mono disabled:opacity-50"
             />
             <button
               onClick={handleSend}
-              disabled={isProcessing || !input.trim() || pendingResponse !== null}
+              disabled={isProcessing || isConfirming || !input.trim() || pendingConfirmation !== null}
               className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-foreground/20 text-foreground hover:bg-foreground/35 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">

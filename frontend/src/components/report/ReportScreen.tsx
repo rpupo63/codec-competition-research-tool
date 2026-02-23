@@ -19,7 +19,7 @@ import {
   getSession,
   getSessionCompetitors,
   type ApiMessage,
-  type CompetitorItem, // Import CompetitorItem
+  type CompetitorItem, 
 } from "@/services/ApiService";
 import type { CompetitorDrilldown, CompetitorAnalysisReport, ChallengeEntry, StrategicRecommendationEntry } from "@/types/report";
 import {
@@ -30,7 +30,7 @@ import {
 import { useAudioPlayback } from "@/hooks/use-audio-playback";
 import colonelImg from "@/assets/colonel.png";
 import snakeImg from "@/assets/snake.png";
-import { useChatSession } from "@/contexts/ChatSessionContext"; // Import useChatSession
+import { useChatSession } from "@/contexts/ChatSessionContext"; 
 import type { IntelDossier, VulnerabilityEntry, StrikePlanEntry as IntelStrikePlanEntry } from "@/types/codec";
 
 interface Message {
@@ -46,12 +46,10 @@ interface CompetitorTabInfo {
   id: string;
   name: string;
   threatLevel: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
-  competitor: CompetitorItem; // Use CompetitorItem here
+  competitor: CompetitorItem; 
   drilldown?: CompetitorDrilldown;
   targetCompany: string;
 }
-
-
 
 interface ReportScreenProps {
   onTitleReady?: (title: string) => void;
@@ -59,12 +57,16 @@ interface ReportScreenProps {
 
 // Sanitize step text to hide internal service names and use user-friendly language
 const STEP_REPLACEMENTS: [RegExp, string][] = [
-  [/\bserp\b/gi, "web research"],
-  [/\benrichlayer\b/gi, "data enrichment"],
-  [/\benrich\s?layer\b/gi, "data enrichment"],
-  [/\bcalling\s+(the\s+)?(serp|enrichlayer|enrich\s?layer)\s*(api|service|endpoint)?\b/gi, "gathering data"],
-  [/\b(serp|google)\s*(search|query|api)\b/gi, "web research"],
-  [/\bapi\s+(call|request)\b/gi, "data lookup"],
+  // Match explicit API calls first so we don't end up with fragmented sentences
+  [/\bcalling\s+(the\s+)?enrich\s?layer\s*(api|service|endpoint)?\b/gi, "searching company data platforms"],
+  [/\bcalling\s+(the\s+)?(serp|google)\s*(api|service|endpoint)?\b/gi, "scrolling the web for data"],
+  
+  // Match standalone terms
+  [/\benrich\s?layer\b/gi, "searching company data platforms"],
+  [/\b(serp|google)\s*(search|query|api)?\b/gi, "scrolling the web for data"],
+  
+  // Catch-all for generic API calls
+  [/\bapi\s+(call|request)\b/gi, "gathering data"],
 ];
 
 function sanitizeStepText(text: string): string {
@@ -86,7 +88,7 @@ const transformCompetitorAnalysisReportToIntelDossier = (report: CompetitorAnaly
     vulnerabilities: report.challenges.map(c => ({
       competitor: c.competitor,
       gaps: c.gaps
-    })) as VulnerabilityEntry[], // Map challenges to vulnerabilities
+    })) as VulnerabilityEntry[], 
     strikePlan: report.strikePlan.map(s => ({
       codename: s.codename,
       objective: s.objective,
@@ -94,13 +96,13 @@ const transformCompetitorAnalysisReportToIntelDossier = (report: CompetitorAnaly
       approach: s.approach,
       timeline: s.timeline,
       priority: s.priority
-    })) as IntelStrikePlanEntry[], // Map strikePlan entries
+    })) as IntelStrikePlanEntry[], 
   };
 };
 
 const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
   const hasFiredFirstMessage = useRef(false);
-  const { activeSessionId, isLoading: isSessionLoading } = useChatSession(); // Get activeSessionId from context
+  const { activeSessionId, isLoading: isSessionLoading } = useChatSession(); 
   const [activeTab, setActiveTab] = useState("main");
   const [competitorTabs, setReportTabs] = useState<CompetitorTabInfo[]>([]);
 
@@ -129,7 +131,6 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isAiActive = isProcessing || isThinking || colonelSpeaking || activeNewId !== null;
-  //const { play, stop } = useAudioPlayback("/mother.wav");
 
   const currentMessages = useMemo(() => messagesByTab[activeTab] || [], [messagesByTab, activeTab]);
 
@@ -462,8 +463,6 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
           if (competitorId) return;
         }
 
-
-
         if (response.dossier) {
           const transformedDossier: CompetitorAnalysisReport = {
             classification: response.dossier.classification,
@@ -498,7 +497,7 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
       undefined,
       history,
       activeSessionId,
-      competitorId, // Pass competitorId here
+      competitorId, 
     ).catch((err) => handleError(err, tabId))
       .finally(() => {
         setIsProcessing(false);
@@ -578,17 +577,13 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
     if (tabId !== "main" && !isProcessing) {
       const tab = competitorTabs.find((t) => t.id === tabId);
       if (tab && !tab.drilldown) {
-        //play();
         void loadCompetitorDrilldown(tabId);
       }
     }
   };
 
-
-
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
-    //play();
     const userMessage = input.trim();
     setInput("");
 
@@ -729,9 +724,6 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
               </motion.div>
             ))}
           </AnimatePresence>
-
-
-
 
           {activeTab === "main" && dossierData && !isProcessing && (
             <motion.div

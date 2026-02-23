@@ -43,8 +43,11 @@ const OperationsScreen: React.FC = () => {
               <li key={session.id}>
                 <NavLink
                   to={`/operations/${session.id}`}
-                  className="flex items-center gap-2 p-3 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  activeClassName="bg-gray-100 dark:bg-gray-800"
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 p-3 rounded-md transition-colors ${
+                      isActive ? "bg-gray-100 dark:bg-gray-800" : "hover:bg-gray-100 dark:hover:bg-gray-800"
+                    }`
+                  }
                 >
                   <FolderKanban className="w-4 h-4 shrink-0" />
                   <span className="truncate flex-1">{session.title}</span>

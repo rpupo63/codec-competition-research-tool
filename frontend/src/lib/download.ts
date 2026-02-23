@@ -40,13 +40,13 @@ export function generateConversationSummary(
     content += `MARKET SHARE: ${drilldown.details.marketShare}\n\n`;
 
     content += `KEY PRODUCTS:\n`;
-    for (const product of drilldown.details.keyProducts) {
+    for (const product of drilldown.details.keyProducts || []) {
       content += `  • ${product}\n`;
     }
     content += `\n`;
 
     content += `WEAKNESSES:\n`;
-    for (const weakness of drilldown.details.weaknesses) {
+    for (const weakness of drilldown.details.weaknesses || []) {
       content += `  • ${weakness}\n`;
     }
     content += `\n`;
@@ -85,7 +85,7 @@ export function generateDossierReport(dossier: IntelDossier): string {
   }
 
   content += `\nVULNERABILITY MAP\n${subDivider}\n\n`;
-  for (const entry of dossier.vulnerabilities) {
+  for (const entry of dossier.vulnerabilities || []) {
     content += `${entry.competitor}\n`;
     for (const gap of entry.gaps) {
       content += `  ◆ ${gap}\n`;

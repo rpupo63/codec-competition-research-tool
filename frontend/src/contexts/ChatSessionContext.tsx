@@ -46,7 +46,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
 
         let sessionToActivate: ChatSession | null = null;
-        let shouldNavigate = false;
+        let shouldRedirectToSpecificSession = false; // Flag to indicate if a redirect is needed
 
         // Try to get session ID from URL
         const match = location.pathname.match(/\/operations\/([a-f0-9-]+)/);
@@ -63,7 +63,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
             hasBeenSummarized: false,
           };
           setSessions([sessionToActivate]);
-          shouldNavigate = true; // Always navigate if a new session is created
+          shouldRedirectToSpecificSession = true; // Always redirect if a new session is created
         } else {
           const mapped: ChatSession[] = apiSessions.map((s) => ({
             id: s.id,
@@ -78,25 +78,31 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
             const foundSession = mapped.find((s) => s.id === urlSessionId);
             if (foundSession) {
               sessionToActivate = foundSession;
-              // If URL matches an existing session, no need to navigate unless it's not active
-              if (activeSessionId !== urlSessionId) {
-                setActiveSessionId(urlSessionId);
-              }
+              // If URL matches an existing session, no need to redirect unless activeSessionId is different.
+              // We explicitly don't set shouldRedirectToSpecificSession here to avoid unnecessary navigation.
             } else {
-              // URL session ID not found, default to the first session and navigate
+              // URL session ID not found, default to the first session and redirect
               sessionToActivate = mapped[0];
-              shouldNavigate = true;
+              shouldRedirectToSpecificSession = true;
             }
           } else {
-            // No session ID in URL, default to the first session and navigate
-            sessionToActivate = mapped[0];
-            shouldNavigate = true;
+            // No session ID in URL
+            if (location.pathname === "/") {
+              // If on the root path, default to the first session and redirect
+              sessionToActivate = mapped[0];
+              shouldRedirectToSpecificSession = true;
+            } else if (location.pathname === "/operations") {
+              // If on the /operations list page, do not redirect to a specific session.
+              // Just ensure a session is active for the sidebar, but don't navigate.
+              sessionToActivate = mapped[0]; // Still set the first session as active for context, but no redirect
+              shouldRedirectToSpecificSession = false; // Explicitly no redirect
+            }
           }
         }
 
         if (sessionToActivate) {
-          setActiveSessionId(sessionToActivate.id);
-          if (shouldNavigate || location.pathname !== `/operations/${sessionToActivate.id}`) {
+          setActiveSessionId(sessionToActivate.id); // Always set active session
+          if (shouldRedirectToSpecificSession && location.pathname !== `/operations/${sessionToActivate.id}`) {
             navigate(`/operations/${sessionToActivate.id}`);
           }
         }
@@ -115,7 +121,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [navigate, location.pathname]);
+  }, [navigate, location.pathname, activeSessionId]);
 
   // If sessions list becomes empty (last one deleted), create a new one
   useEffect(() => {

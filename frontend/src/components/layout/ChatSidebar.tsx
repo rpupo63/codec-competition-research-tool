@@ -72,12 +72,12 @@ export default function ChatSidebar() {
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <NavLink to="/operations" className="w-full">
-                <SidebarMenuButton tooltip="All Operations">
+              <SidebarMenuButton asChild tooltip="All Operations">
+                <NavLink to="/operations" className="w-full">
                   <FolderKanban className="w-4 h-4 shrink-0" />
                   <span className="truncate">All Operations</span>
-                </SidebarMenuButton>
-              </NavLink>
+                </NavLink>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
