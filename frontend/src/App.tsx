@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import OperationsScreen from "./pages/OperationsScreen";
+import CodecScreen from "./components/codec/CodecScreen"; // Import CodecScreen
 
 const queryClient = new QueryClient();
 
@@ -18,6 +20,8 @@ const App = () => (
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<Index />} />
+            <Route path="/operations" element={<OperationsScreen />} />
+            <Route path="/operations/:sessionId" element={<CodecScreen key={window.location.pathname} />} /> {/* New route for individual session */}
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

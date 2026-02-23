@@ -2,19 +2,22 @@
 // Request/Response contract for the Codec API
 // TODO: This contract maps to the Go Chi backend endpoints
 
+export interface DossierMatrixEntry {
+  name: string;
+  threat_level: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  marketShare: string;
+  aiCapability: string;
+  keyStrength: string;
+  primaryProduct: string;
+}
+
 export interface CompetitorReasoning {
   step: string;       // e.g., "Analyzing signal..."
   summary: string;    // e.g., "Checking SEC filings and patent databases for corporate entity match."
   status: 'pending' | 'complete';
 }
 
-export interface CompetitorData {
-  id: string;
-  name: string;
-  threat_level: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
-  status: string;
-  intel: string;
-}
+import type { CompetitorData } from "./common";
 
 export interface CompetitorDrilldown {
   reasoning: CompetitorReasoning[];
@@ -29,14 +32,6 @@ export interface CompetitorDrilldown {
   };
 }
 
-export interface DossierMatrixEntry {
-  name: string;
-  threat_level: string;
-  marketShare: string;
-  keyStrength: string;
-  primaryProduct: string;
-  aiCapability: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
-}
 
 export interface VulnerabilityEntry {
   competitor: string;

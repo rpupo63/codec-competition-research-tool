@@ -1,4 +1,4 @@
-import TypewriterText from "./TypewriterText";
+import TypewriterText from "@/components/shared/TypewriterText";
 
 interface ChatMessageProps {
   sender: string;
@@ -9,9 +9,22 @@ interface ChatMessageProps {
   reasoningSummary?: string;
   onComplete?: () => void;
   onTick?: () => void;
+  userLabel?: string;
+  analystLabel?: string;
 }
 
-const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoningStatus, reasoningSummary, onComplete, onTick }: ChatMessageProps) => {
+const ChatMessage = ({
+  sender,
+  text,
+  isNew = false,
+  isReasoning = false,
+  reasoningStatus,
+  reasoningSummary,
+  onComplete,
+  onTick,
+  userLabel = "SNAKE",
+  analystLabel = "COLONEL",
+}: ChatMessageProps) => {
   const isUser = sender === "SNAKE";
   const isColonel = sender === "COLONEL";
   const isIntel = sender === "INTEL";
@@ -54,7 +67,7 @@ const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoni
             </p>
           </div>
           <div className="text-[10px] text-muted-foreground/50 tracking-widest mt-1.5 text-right pr-1">
-            SNAKE
+            {userLabel}
           </div>
         </div>
       </div>
@@ -85,7 +98,7 @@ const ChatMessage = ({ sender, text, isNew = false, isReasoning = false, reasoni
       <div className="max-w-[85%] sm:max-w-[75%]">
         {isColonel && (
           <div className="text-[10px] text-foreground/50 text-glow tracking-[0.2em] uppercase mb-1.5 pl-1">
-            COLONEL
+            {analystLabel}
           </div>
         )}
         <div className="px-1">

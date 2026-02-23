@@ -3,13 +3,17 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import * as ApiService from "@/services/ApiService";
 
 export interface ChatSession {
   id: string;
   title: string;
   createdAt: number;
+  hasBeenSummarized?: boolean; // New field
 }
 
 interface ChatSessionContextType {
@@ -19,47 +23,154 @@ interface ChatSessionContextType {
   switchSession: (id: string) => void;
   deleteSession: (id: string) => void;
   updateSessionTitle: (id: string, title: string) => void;
+  triggerSessionTitleSummarization: (id: string) => Promise<void>; // New function
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
 }
 
 const ChatSessionContext = createContext<ChatSessionContextType | null>(null);
 
-function generateId() {
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function makeSession(): ChatSession {
-  return { id: generateId(), title: "New operation", createdAt: Date.now() };
-}
-
 export function ChatSessionProvider({ children }: { children: ReactNode }) {
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    const initial = makeSession();
-    return [initial];
-  });
-  const [activeSessionId, setActiveSessionId] = useState(
-    () => sessions[0].id,
-  );
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const createSession = useCallback(() => {
-    const session = makeSession();
-    setSessions((prev) => [session, ...prev]);
-    setActiveSessionId(session.id);
-  }, []);
+  // On mount: fetch all sessions from backend; create one if none exist
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const apiSessions = await ApiService.listSessions();
+        if (cancelled) return;
+
+        let sessionToActivate: ChatSession | null = null;
+        let shouldNavigate = false;
+
+        // Try to get session ID from URL
+        const match = location.pathname.match(/\/operations\/([a-f0-9-]+)/);
+        const urlSessionId = match ? match[1] : null;
+
+        if (apiSessions.length === 0) {
+          // No sessions exist, create a new one
+          const newSession = await ApiService.createSession("New operation");
+          if (cancelled) return;
+          sessionToActivate = {
+            id: newSession.id,
+            title: newSession.title,
+            createdAt: newSession.created_at,
+            hasBeenSummarized: false,
+          };
+          setSessions([sessionToActivate]);
+          shouldNavigate = true; // Always navigate if a new session is created
+        } else {
+          const mapped: ChatSession[] = apiSessions.map((s) => ({
+            id: s.id,
+            title: s.title,
+            createdAt: s.created_at,
+            hasBeenSummarized: s.title !== "New operation",
+          }));
+          setSessions(mapped);
+
+          if (urlSessionId) {
+            // Check if session ID from URL exists in fetched sessions
+            const foundSession = mapped.find((s) => s.id === urlSessionId);
+            if (foundSession) {
+              sessionToActivate = foundSession;
+              // If URL matches an existing session, no need to navigate unless it's not active
+              if (activeSessionId !== urlSessionId) {
+                setActiveSessionId(urlSessionId);
+              }
+            } else {
+              // URL session ID not found, default to the first session and navigate
+              sessionToActivate = mapped[0];
+              shouldNavigate = true;
+            }
+          } else {
+            // No session ID in URL, default to the first session and navigate
+            sessionToActivate = mapped[0];
+            shouldNavigate = true;
+          }
+        }
+
+        if (sessionToActivate) {
+          setActiveSessionId(sessionToActivate.id);
+          if (shouldNavigate || location.pathname !== `/operations/${sessionToActivate.id}`) {
+            navigate(`/operations/${sessionToActivate.id}`);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load sessions:", e);
+        // Fallback: temporary in-memory session so the app still works offline
+        const fallbackId = `session-${Date.now()}`;
+        const fallbackSession = { id: fallbackId, title: "New operation", createdAt: Date.now(), hasBeenSummarized: false };
+        setSessions([fallbackSession]);
+        setActiveSessionId(fallbackId);
+        navigate(`/operations/${fallbackId}`); // Navigate to the fallback session
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, location.pathname]);
+
+  // If sessions list becomes empty (last one deleted), create a new one
+  useEffect(() => {
+    if (!isLoading && sessions.length === 0) {
+      void (async () => {
+        try {
+          const newSession = await ApiService.createSession("New operation");
+          const session: ChatSession = {
+            id: newSession.id,
+            title: newSession.title,
+            createdAt: newSession.created_at,
+            hasBeenSummarized: false, // Initialize new field
+          };
+          setSessions([session]);
+          setActiveSessionId(session.id);
+        } catch (e) {
+          console.error("Failed to create replacement session:", e);
+        }
+      })();
+    }
+  }, [sessions.length, isLoading]);
+
+  const createSession = useCallback(async () => {
+    try {
+      const newSession = await ApiService.createSession("New operation");
+      const session: ChatSession = {
+        id: newSession.id,
+        title: newSession.title,
+        createdAt: newSession.created_at,
+        hasBeenSummarized: false,
+      };
+      setSessions((prev) => [session, ...prev]);
+      setActiveSessionId(session.id);
+      navigate(`/operations/${session.id}`);
+    } catch (e) {
+      console.error("Failed to create session:", e);
+    }
+  }, [navigate]);
 
   const switchSession = useCallback((id: string) => {
+    setIsLoading(true);
     setActiveSessionId(id);
-  }, []);
+    navigate(`/operations/${id}`);
+  }, [navigate]);
 
   const deleteSession = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      try {
+        await ApiService.deleteSession(id);
+      } catch (e) {
+        console.error("Failed to delete session:", e);
+      }
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== id);
-        if (next.length === 0) {
-          const fresh = makeSession();
-          setActiveSessionId(fresh.id);
-          return [fresh];
-        }
-        if (id === activeSessionId) {
+        if (id === activeSessionId && next.length > 0) {
           setActiveSessionId(next[0].id);
         }
         return next;
@@ -69,9 +180,53 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const updateSessionTitle = useCallback((id: string, title: string) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, title } : s)),
-    );
+    setSessions((prev) => {
+      const session = prev.find((s) => s.id === id);
+      // Only update if the title is actually different, and mark as summarized if it's not the default.
+      if (session?.title === title) return prev; 
+      void ApiService.updateSessionTitle(id, title).catch((e) =>
+        console.error("Failed to update session title:", e),
+      );
+      return prev.map((s) => (s.id === id ? { ...s, title, hasBeenSummarized: title !== "New operation" } : s));
+    });
+  }, []);
+
+  const triggerSessionTitleSummarization = useCallback(async (id: string) => {
+    setSessions((prevSessions) => {
+      const sessionToSummarize = prevSessions.find((s) => s.id === id);
+      // Only proceed if the session exists and hasn't been summarized yet
+      if (sessionToSummarize && !sessionToSummarize.hasBeenSummarized) {
+        // Optimistically update the UI to show a "Summarizing..." message (or similar)
+        // Mark as attempted immediately to prevent duplicate calls, regardless of success.
+        setSessions((currentSessions) =>
+          currentSessions.map((s) =>
+            s.id === id ? { ...s, hasBeenSummarized: true } : s // Mark as attempted to prevent immediate retries
+          )
+        );
+
+        void (async () => {
+          try {
+            const summarizedTitle = await ApiService.summarizeSessionTitle(id);
+            if (summarizedTitle) {
+              setSessions((currentSessions) =>
+                currentSessions.map((s) =>
+                  s.id === id ? { ...s, title: summarizedTitle, hasBeenSummarized: true } : s
+                )
+              );
+              // Also persist to backend
+              void ApiService.updateSessionTitle(id, summarizedTitle).catch((e) =>
+                console.error("Failed to persist summarized session title:", e),
+              );
+            }
+          } catch (e) {
+            console.error("Failed to summarize session title:", e);
+            // If summarization fails, the title remains "New operation" or whatever it was.
+            // The `hasBeenSummarized` flag was already set to true to prevent retries.
+          }
+        })();
+      }
+      return prevSessions; // Return previous sessions for immediate state update
+    });
   }, []);
 
   return (
@@ -83,6 +238,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         switchSession,
         deleteSession,
         updateSessionTitle,
+        triggerSessionTitleSummarization, // Add new function to context value
+        isLoading,
+        setIsLoading,
       }}
     >
       {children}

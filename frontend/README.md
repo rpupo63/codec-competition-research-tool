@@ -1,73 +1,56 @@
-# Welcome to your Lovable project
+# CODEC — Frontend
 
-## Project info
+React + TypeScript SPA. Connects to the Go backend via REST and SSE.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Stack
 
-## How can I edit this code?
+- **React 18** + **TypeScript** via **Vite**
+- **Tailwind CSS** + **shadcn/ui** for components
+- **Framer Motion** for animations
+- **TanStack Query** for server state
+- **React Router** for navigation
 
-There are several ways of editing your application.
+## Running locally
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:8080
 ```
 
-**Edit a file directly in GitHub**
+The frontend defaults to `http://localhost:8080/api` for API calls. If your backend
+runs on a different port, set `VITE_API_URL` before starting:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+VITE_API_URL=http://localhost:3001/api npm run dev
+```
 
-**Use GitHub Codespaces**
+## Key screens
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+| Route | Description |
+|---|---|
+| `/` | Main CODEC screen — chat input, live agent progress, competitor tabs, Intel Dossier |
+| `/operations` | Session list — browse and resume past analyses |
 
-## What technologies are used for this project?
+## Project layout
 
-This project is built with:
+```
+src/
+├── components/
+│   ├── codec/          # CodecScreen — the main analysis view
+│   ├── report/         # ReportScreen — printable dossier view
+│   ├── shared/         # Reusable pieces: DossierPanel, ChatMessage, CompetitorPicker…
+│   ├── layout/         # AppLayout, ChatSidebar
+│   └── ui/             # shadcn/ui primitives
+├── contexts/           # ChatSessionContext, AudioContext
+├── hooks/              # use-audio-playback, use-sidebar, use-form-field
+├── pages/              # Index, OperationsScreen, NotFound
+├── services/           # ApiService (SSE + REST client), MockApiService
+└── types/              # codec.ts, common.ts, report.ts
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Environment variables
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_API_URL` | `http://localhost:8080/api` | Backend API base URL |

@@ -1,27 +1,46 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { IntelDossier } from "@/types/codec";
-import DossierMatrix from "./DossierMatrix";
-import DossierVulnerabilities from "./DossierVulnerabilities";
-import DossierStrikePlan from "./DossierStrikePlan";
+import type { CompetitorAnalysisReport } from "@/types/report";
+import DossierMatrixCodec from "@/components/shared/codec/DossierMatrix";
+import DossierVulnerabilitiesCodec from "@/components/shared/codec/DossierVulnerabilities";
+import DossierStrikePlanCodec from "@/components/shared/codec/DossierStrikePlan";
+import DossierMatrixReport from "@/components/shared/report/DossierMatrix";
+import DossierVulnerabilitiesReport from "@/components/shared/report/DossierVulnerabilities";
+import DossierStrikePlanReport from "@/components/shared/report/DossierStrikePlan";
 
-interface IntelDossierPanelProps {
-  dossier: IntelDossier;
+interface DossierPanelProps {
+  dossier: IntelDossier | CompetitorAnalysisReport;
   visible: boolean;
   onClose: () => void;
   onDownloadDossier?: () => void;
+  variant: "codec" | "report";
 }
 
-const TABS = [
-  { id: "matrix", label: "COMPETITOR MATRIX", icon: "◈" },
-  { id: "vulns", label: "VULNERABILITY MAP", icon: "◆" },
-  { id: "strike", label: "STRIKE PLAN", icon: "▶" },
-] as const;
+const TABS_CONFIG = {
+  codec: [
+    { id: "matrix", label: "COMPETITOR MATRIX", icon: "◈" },
+    { id: "vulns", label: "VULNERABILITY MAP", icon: "◆" },
+    { id: "strike", label: "STRIKE PLAN", icon: "▶" },
+  ],
+  report: [
+    { id: "matrix", label: "COMPETITOR MATRIX", icon: "◈" },
+    { id: "vulns", label: "CHALLENGE AREAS", icon: "◆" },
+    { id: "strike", label: "STRATEGIC RECOMMENDATIONS", icon: "▶" },
+  ],
+};
 
-type TabId = typeof TABS[number]["id"];
+type TabId = "matrix" | "vulns" | "strike";
 
-const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: IntelDossierPanelProps) => {
+const DossierPanel = ({ dossier, visible, onClose, onDownloadDossier, variant }: DossierPanelProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("matrix");
+
+  const tabsConfig = TABS_CONFIG[variant];
+  const panelHeaderClass = variant === "codec" ? "dossier-header" : "report-header";
+  const borderClass = variant === "codec" ? "codec-border" : "report-border";
+  const tabActiveClass = variant === "codec" ? "dossier-tab-active" : "report-tab-active";
+  const tabInactiveClass = variant === "codec" ? "dossier-tab" : "report-tab";
+  const targetLabel = variant === "codec" ? "TARGET" : "SUBJECT";
 
   return (
     <AnimatePresence>
@@ -46,7 +65,7 @@ const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: Int
             style={{ boxShadow: "-4px 0 30px hsl(153 90% 61% / 0.15)" }}
           >
             {/* Header */}
-            <div className="dossier-header px-5 py-4 flex-shrink-0">
+            <div className={`${panelHeaderClass} px-5 py-4 flex-shrink-0`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[10px] text-destructive tracking-[0.3em] font-bold">
                   {dossier.classification}
@@ -55,14 +74,14 @@ const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: Int
                   {onDownloadDossier && (
                     <button
                       onClick={onDownloadDossier}
-                      className="text-muted-foreground hover:text-foreground hover:text-glow text-xs tracking-widest transition-colors px-2 py-1 codec-border"
+                      className={`text-muted-foreground hover:text-foreground hover:text-glow text-xs tracking-widest transition-colors px-2 py-1 ${borderClass}`}
                     >
                       ▼ DOWNLOAD
                     </button>
                   )}
                   <button
                     onClick={onClose}
-                    className="text-muted-foreground hover:text-foreground text-xs tracking-widest transition-colors px-2 py-1 codec-border"
+                    className={`text-muted-foreground hover:text-foreground text-xs tracking-widest transition-colors px-2 py-1 ${borderClass}`}
                   >
                     ✕ CLOSE
                   </button>
@@ -74,21 +93,21 @@ const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: Int
               </div>
 
               <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground tracking-wider">
-                <span>TARGET: {dossier.targetCompany}</span>
+                <span>{targetLabel}: {dossier.targetCompany}</span>
                 <span>DATE: {new Date(dossier.dateCompiled).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</span>
               </div>
             </div>
 
             {/* Tabs */}
             <div className="flex gap-1 px-5 py-3 flex-shrink-0">
-              {TABS.map((tab) => (
+              {tabsConfig.map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => setActiveTab(tab.id as TabId)}
                   className={`flex-1 px-2 py-2 text-[10px] tracking-widest font-bold transition-all ${
                     activeTab === tab.id
-                      ? "dossier-tab-active text-foreground text-glow"
-                      : "dossier-tab text-muted-foreground"
+                      ? `${tabActiveClass} text-foreground text-glow`
+                      : `${tabInactiveClass} text-muted-foreground`
                   }`}
                 >
                   {tab.icon} {tab.label}
@@ -107,7 +126,11 @@ const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: Int
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <DossierMatrix entries={dossier.matrix} target={dossier.targetCompany} />
+                    {variant === "codec" ? (
+                      <DossierMatrixCodec entries={(dossier as IntelDossier).matrix} target={dossier.targetCompany} />
+                    ) : (
+                      <DossierMatrixReport entries={(dossier as CompetitorAnalysisReport).matrix} target={dossier.targetCompany} />
+                    )}
                   </motion.div>
                 )}
                 {activeTab === "vulns" && (
@@ -118,7 +141,11 @@ const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: Int
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <DossierVulnerabilities entries={dossier.vulnerabilities} />
+                    {variant === "codec" ? (
+                      <DossierVulnerabilitiesCodec entries={(dossier as IntelDossier).vulnerabilities} />
+                    ) : (
+                      <DossierVulnerabilitiesReport entries={(dossier as CompetitorAnalysisReport).challenges} />
+                    )}
                   </motion.div>
                 )}
                 {activeTab === "strike" && (
@@ -129,7 +156,11 @@ const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: Int
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <DossierStrikePlan entries={dossier.strikePlan} />
+                    {variant === "codec" ? (
+                      <DossierStrikePlanCodec entries={(dossier as IntelDossier).strikePlan} />
+                    ) : (
+                      <DossierStrikePlanReport entries={(dossier as CompetitorAnalysisReport).strikePlan} />
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -141,4 +172,4 @@ const IntelDossierPanel = ({ dossier, visible, onClose, onDownloadDossier }: Int
   );
 };
 
-export default IntelDossierPanel;
+export default DossierPanel;

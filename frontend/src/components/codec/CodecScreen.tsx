@@ -1,30 +1,36 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import PortraitFrame from "./PortraitFrame";
-import FrequencyDisplay from "./FrequencyDisplay";
-import ChatMessage from "./ChatMessage";
-import ScanlineOverlay from "./ScanlineOverlay";
-import SignalLostOverlay from "./SignalLostOverlay";
-import CodecErrorDialog, { type ErrorType } from "./CodecErrorDialog";
-import CompetitorPicker from "./CompetitorPicker";
-import IntelDossierPanel from "./IntelDossierPanel";
-import CompetitorTabs from "./CompetitorTabs";
+import { useParams } from "react-router-dom"; // Import useParams
+import PortraitFrame from "@/components/shared/PortraitFrame";
+import FrequencyDisplay from "@/components/shared/FrequencyDisplay";
+import ChatMessage from "@/components/shared/ChatMessage";
+import ErrorDialog from "@/components/shared/ErrorDialog";
+import CompetitorPicker from "@/components/shared/CompetitorPicker";
+import CompanyConfirmation from "@/components/shared/CompanyConfirmation";
+import DossierPanel from "@/components/shared/DossierPanel";
+import DossierTabs from "@/components/shared/DossierTabs";
+import * as ApiService from "@/services/ApiService";
 import {
-  sendMessage,
-  fetchCompetitorDrilldown,
   CompanyNotFoundError,
   NoCompetitorsError,
   SystemFailureError,
-} from "@/services/MockApiService";
-import type { CompetitorData, CompetitorDrilldown, IntelDossier } from "@/types/codec";
+} from "@/services/ApiService";
+import type { ConversationTurn } from "@/services/ApiService";
+import type { CompetitorDrilldown, IntelDossier, ChatResponse } from "@/types/codec";
+import type { CompetitorData, ErrorType } from "@/types/common";
 import {
   downloadTextFile,
   generateConversationSummary,
   generateDossierReport,
 } from "@/lib/download";
-import { useCodecAudio } from "@/hooks/use-codec-audio";
+import { mapThreatLevelToString } from "@/lib/utils";
+import { useAudioPlayback } from "@/hooks/use-audio-playback";
+import { useChatSession } from "@/contexts/ChatSessionContext"; // Import useChatSession
 import colonelImg from "@/assets/colonel.png";
 import snakeImg from "@/assets/snake.png";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Message {
   id: number;
@@ -35,14 +41,6 @@ interface Message {
   reasoningSummary?: string;
 }
 
-interface CompetitorTabInfo {
-  id: string;
-  name: string;
-  threatLevel: string;
-  competitor: CompetitorData;
-  drilldown?: CompetitorDrilldown;
-  targetCompany: string;
-}
 
 const INITIAL_MESSAGE: Message = {
   id: 0,
@@ -50,12 +48,63 @@ const INITIAL_MESSAGE: Message = {
   text: "Snake, do you read me? This is a secure channel. I'll be your support for this operation. If you need intel on competitors, just ask. Stay sharp out there.",
 };
 
+// Stub drilldown: marks a competitor tab as "already loaded" (suppresses re-fetch)
+const DRILLDOWN_STUB: CompetitorDrilldown = {
+  reasoning: [],
+  finalAnalysis: "",
+  intelLevel: 0,
+  tokensUsed: 0,
+  details: { marketShare: "", keyProducts: [], weaknesses: [], recommendation: "" },
+};
+
 interface CodecScreenProps {
   sessionId: string;
-  onFirstMessage?: (message: string) => void;
+  onFirstMessage: (msg: string) => void;
+  onSessionTitleUpdate: (title: string) => void;
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
 }
 
-const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
+interface CompetitorTabInfo {
+  id: string;
+  name: string;
+  threatLevel: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  competitor: CompetitorData;
+  targetCompany: string;
+  drilldown?: CompetitorDrilldown;
+}
+
+const CodecScreen = ({
+  onFirstMessage,
+  onSessionTitleUpdate,
+  isLoading, // from context
+  setIsLoading, // from context
+}: CodecScreenProps) => {
+  const { sessionId: sessionIdFromParams } = useParams<{ sessionId: string }>();
+  const sessionId = sessionIdFromParams || ""; // Ensure sessionId is always a string
+
+  const [isLoadingSession, setIsLoadingSession] = useState(true); // Local loading state for this component's data fetching
+
+  if (!sessionId || isLoading) { // Use global isLoading for overall loading screen
+    return (
+      <div className="flex flex-col h-svh bg-background overflow-hidden relative justify-center items-center">
+        <div className="flex items-center gap-2 py-2">
+          <span className="flex gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-foreground/60 animate-pulse" style={{ animationDelay: "0ms" }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-foreground/60 animate-pulse" style={{ animationDelay: "300ms" }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-foreground/60 animate-pulse" style={{ animationDelay: "600ms" }} />
+          </span>
+          <span className="text-xs text-muted-foreground tracking-wider">
+            LOADING SESSION DETAILS...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const { sessions, activeSessionId, triggerSessionTitleSummarization } = useChatSession();
+  const currentSession = sessions.find((s) => s.id === activeSessionId);
+
   const hasFiredFirstMessage = useRef(false);
   const [activeTab, setActiveTab] = useState("main");
   const [competitorTabs, setCompetitorTabs] = useState<CompetitorTabInfo[]>([]);
@@ -70,9 +119,75 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
   const [memoryUsage, setMemoryUsage] = useState(0);
   const [tokenCount, setTokenCount] = useState(0);
   const [activeNewId, setActiveNewId] = useState<number | null>(null);
-  const [signalLost, setSignalLost] = useState(false);
-  const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [selectableCompetitors, setSelectableCompetitors] = useState<CompetitorData[] | null>(null);
+  const [pendingResponse, setPendingResponse] = useState<ChatResponse | null>(null);
+  const [pendingUserInput, setPendingUserInput] = useState<string | null>(null);
+
+  const processFinalResponse = useCallback((response: ChatResponse, inputTabId: string) => {
+      setIsThinking(false);
+      setTokenCount((prev) => prev + response.tokensUsed);
+      setMemoryUsage(response.intelLevel);
+      setColonelSpeaking(true);
+      addMessage(inputTabId, { sender: "COLONEL", text: response.finalAnalysis });
+
+      if (currentSession && currentSession.title === "New operation" && !currentSession.hasBeenSummarized) {
+        void triggerSessionTitleSummarization(currentSession.id);
+      }
+
+      if (inputTabId === "main") {
+        if (response.competitors && response.competitors.length > 0) {
+          const targetCompany = response.dossier?.targetCompany || "UNKNOWN";
+
+          for (const comp of response.competitors) {
+            addMessage("main", {
+              sender: "INTEL",
+              text: `[${comp.threat_level}] ${comp.name} — ${comp.intel}`,
+            });
+          }
+
+          setCompetitorTabs((prev) => {
+            const existingIds = new Set(prev.map((t) => t.id));
+            const newTabs = response.competitors!
+              .filter((comp) => !existingIds.has(comp.id))
+              .map((comp) => ({
+                id: comp.id,
+                name: comp.name,
+                threatLevel: comp.threat_level,
+                competitor: comp,
+                targetCompany,
+              }));
+            return newTabs.length > 0 ? [...prev, ...newTabs] : prev;
+          });
+
+          setMessagesByTab((prev) => {
+            const updated = { ...prev };
+            let changed = false;
+            for (const comp of response.competitors!) {
+              if (!updated[comp.id]) {
+                updated[comp.id] = [];
+                changed = true;
+              }
+            }
+            return changed ? updated : prev;
+          });
+
+          setSelectableCompetitors(response.competitors);
+        }
+
+        if (response.dossier) {
+          setDossierData({
+            classification: response.dossier.classification,
+            targetCompany: response.dossier.targetCompany,
+            operationName: response.dossier.operationName,
+            dateCompiled: response.dossier.dateCompiled,
+            matrix: response.dossier.matrix as IntelDossier["matrix"],
+            vulnerabilities: response.dossier.vulnerabilities as IntelDossier["vulnerabilities"],
+            strikePlan: response.dossier.strikePlan as IntelDossier["strikePlan"],
+          });
+        }
+      }
+    }, [addMessage, currentSession, triggerSessionTitleSummarization, setCompetitorTabs, setMessagesByTab, setSelectableCompetitors, setDossierData, setIsThinking, setTokenCount, setMemoryUsage, setColonelSpeaking]);
+
 
   const [errorDialogVisible, setErrorDialogVisible] = useState(false);
   const [errorType, setErrorType] = useState<ErrorType | null>(null);
@@ -84,34 +199,120 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
   const chatRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const pendingStepMessageIds = useRef<Map<string, number>>(new Map());
 
   const isAiActive = isProcessing || isThinking || colonelSpeaking || activeNewId !== null;
-  const { play: playCodecAudio, stop: stopCodecAudio } = useCodecAudio("/mother.wav");
+  //const { play, stop } = useAudioPlayback("/mother.wav");
 
-  useEffect(() => {
-    if (!isAiActive) stopCodecAudio();
-  }, [isAiActive, stopCodecAudio]);
-
-  const currentMessages = messagesByTab[activeTab] || [];
+  const currentMessages = useMemo(() => messagesByTab[activeTab] || [], [messagesByTab, activeTab]);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
-  }, []);
+  }, [bottomRef]);
 
   useEffect(() => {
     scrollToBottom();
-  }, [currentMessages, selectableCompetitors, scrollToBottom, activeTab]);
+  }, [currentMessages, selectableCompetitors, activeTab]);
+
+  // Load session history when sessionId is a real backend UUID
+  useEffect(() => {
+    if (!UUID_REGEX.test(sessionId)) {
+      setIsLoadingSession(false); // Explicitly set to false if sessionId is invalid
+      return;
+    }
+
+    setIsLoadingSession(true); // Start loading
+    let cancelled = false;
+    (async () => {
+      try {
+        const [sessionData, competitorsData] = await Promise.all([
+          ApiService.getSession(sessionId),
+          ApiService.getSessionCompetitors(sessionId),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        if (cancelled) return;
+
+        // Group messages by tab_id
+        const grouped: Record<string, Message[]> = {};
+        let maxSortOrder = 0;
+        for (const msg of sessionData.messages) {
+          const tabId = msg.tab_id || "main";
+          if (!grouped[tabId]) grouped[tabId] = [];
+          grouped[tabId].push({
+            id: msg.sort_order,
+            sender: msg.sender,
+            text: msg.text,
+            isReasoning: msg.is_reasoning,
+            reasoningStatus: (msg.reasoning_status || undefined) as
+              | "pending"
+              | "complete"
+              | undefined,
+            reasoningSummary: msg.reasoning_summary || undefined,
+          });
+          if (msg.sort_order > maxSortOrder) maxSortOrder = msg.sort_order;
+        }
+
+        nextId.current = maxSortOrder + 1;
+
+        // If main tab has no persisted messages, show the initial greeting
+        if (!grouped.main || grouped.main.length === 0) {
+          grouped.main = [INITIAL_MESSAGE];
+        }
+
+        // Recreate competitor tabs; mark those with existing messages as already-loaded
+        const tabs: CompetitorTabInfo[] = (competitorsData.competitors || []).map((comp) => ({
+          id: comp.id,
+          name: comp.name,
+          threatLevel: comp.threat_level,
+          competitor: comp,
+          targetCompany: competitorsData.dossier?.targetCompany || "UNKNOWN",
+          drilldown:
+            grouped[comp.id] && grouped[comp.id].length > 0 ? DRILLDOWN_STUB : undefined,
+        }));
+
+        setCompetitorTabs(tabs);
+        setMessagesByTab(grouped);
+
+        // Restore dossier (challenges → vulnerabilities rename)
+        if (competitorsData.dossier) {
+          setDossierData({
+            classification: competitorsData.dossier.classification,
+            targetCompany: competitorsData.dossier.targetCompany,
+            operationName: competitorsData.dossier.operationName,
+            dateCompiled: competitorsData.dossier.dateCompiled,
+            matrix: competitorsData.dossier.matrix as IntelDossier["matrix"],
+            vulnerabilities: competitorsData.dossier.vulnerabilities as IntelDossier["vulnerabilities"],
+            strikePlan: competitorsData.dossier.strikePlan as IntelDossier["strikePlan"],
+          });
+        }
+      } catch (e) {
+        console.error("Failed to load session history for:", sessionId, e);
+        // Depending on desired UX, you might want to show an error message
+        // and potentially navigate away or keep loading state for retry.
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSession(false); // End loading
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   const addMessage = useCallback((tabId: string, msg: Omit<Message, "id">) => {
     const id = nextId.current++;
+    const newMessage = { ...msg, id };
     setMessagesByTab((prev) => ({
       ...prev,
-      [tabId]: [...(prev[tabId] || []), { ...msg, id }],
+      [tabId]: [...(prev[tabId] || []), newMessage],
     }));
     setActiveNewId(id);
-    return id;
+    return newMessage; // Return the full message object
   }, []);
 
   const updateReasoningStatus = useCallback(
@@ -126,37 +327,35 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
     [],
   );
 
-  const showReasoningSteps = async (
-    tabId: string,
-    reasoning: { step: string; summary: string; status: string }[],
-  ) => {
-    for (const step of reasoning) {
-      const id = nextId.current++;
-      setColonelSpeaking(true);
+  const updateMessageContent = useCallback(
+    (
+      tabId: string,
+      msgId: number,
+      newText: string,
+      newSummary: string | undefined,
+      newReasoningStatus: "pending" | "complete" | undefined,
+    ) => {
       setMessagesByTab((prev) => ({
         ...prev,
-        [tabId]: [
-          ...(prev[tabId] || []),
-          {
-            id,
-            sender: "SYSTEM",
-            text: step.step,
-            isReasoning: true,
-            reasoningStatus: "pending",
-            reasoningSummary: step.summary,
-          },
-        ],
+        [tabId]: (prev[tabId] || []).map((m) =>
+          m.id === msgId
+            ? {
+                ...m,
+                text: newText,
+                reasoningSummary: newSummary,
+                reasoningStatus: newReasoningStatus,
+              }
+            : m,
+        ),
       }));
-      setActiveNewId(id);
-      const stepTokens = Math.ceil(step.step.length / 4);
-      setTokenCount((prev) => prev + stepTokens);
-      await new Promise<void>((resolve) => setTimeout(resolve, 600 + step.step.length * 18));
-      updateReasoningStatus(tabId, id, "complete");
-    }
-  };
+    },
+    [],
+  );
 
-  const handleError = (error: unknown, tabId: string = "main") => {
+  const handleError = useCallback((error: unknown, tabId: string = "main") => {
     setIsThinking(false);
+    // Clear any pending step messages on error
+    pendingStepMessageIds.current.clear();
 
     if (error instanceof CompanyNotFoundError) {
       setErrorType("company_not_found");
@@ -189,82 +388,113 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
         reasoningStatus: "complete",
       });
     } else {
-      setSignalLost(true);
-      setLastFailedMessage(null);
+      setErrorType("system_failure");
+      setErrorDialogVisible(true);
     }
-  };
+  }, [addMessage]);
 
-  const processMessage = async (userMessage: string) => {
+  const handleConfirmCompany = useCallback(() => {
+    if (!pendingResponse) return;
+    processFinalResponse(pendingResponse, "main"); // Always main tab for initial query
+    setPendingResponse(null);
+    setPendingUserInput(null);
+    setIsProcessing(false); // Release input
+    setTimeout(() => setColonelSpeaking(false), 2000); // Ensure Colonel stops speaking
+  }, [pendingResponse, processFinalResponse, setIsProcessing, setPendingResponse, setPendingUserInput, setColonelSpeaking]);
+
+  const handleAbortCompany = useCallback(() => {
+    addMessage("main", {
+      sender: "COLONEL",
+      text: "Mission aborted. Target unconfirmed. Re-enter company to try again.",
+    });
+    setPendingResponse(null);
+    setPendingUserInput(null);
+    setIsProcessing(false); // Release input
+    setIsThinking(false); // Ensure thinking is off
+    setTimeout(() => setColonelSpeaking(false), 2000); // Ensure Colonel stops speaking
+  }, [addMessage, setIsProcessing, setIsThinking, setPendingResponse, setPendingUserInput, setColonelSpeaking]);
+
+  const processMessageOnTab = useCallback(async (tabId: string, userMessage: string) => {
     setIsProcessing(true);
     setIsThinking(true);
     setSelectableCompetitors(null);
+    pendingStepMessageIds.current.clear(); // Clear pending steps for a new process
+
+    // Build conversation history from the specific tab (exclude greeting, reasoning, INTEL/SYSTEM)
+    const history: ConversationTurn[] = (messagesByTab[tabId] || [])
+      .filter(
+        (msg) =>
+          msg.id !== 0 &&
+          !msg.isReasoning &&
+          msg.sender !== "INTEL" &&
+          msg.sender !== "SYSTEM",
+      )
+      .map((msg) => ({
+        role: msg.sender === "SNAKE" ? ("user" as const) : ("assistant" as const),
+        content: msg.text,
+      }));
 
     try {
-      const response = await sendMessage(userMessage);
-
-      await showReasoningSteps("main", response.reasoning);
-      setIsThinking(false);
-
-      setTokenCount((prev) => prev + response.tokensUsed);
-      setMemoryUsage(response.intelLevel);
-
-      setColonelSpeaking(true);
-      addMessage("main", { sender: "COLONEL", text: response.finalAnalysis });
-
-      if (response.competitors && response.competitors.length > 0) {
-        const targetCompany = response.dossier?.targetCompany || "UNKNOWN";
-
-        for (const comp of response.competitors) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 300));
-          addMessage("main", {
-            sender: "INTEL",
-            text: `[${comp.threat_level}] ${comp.name} — ${comp.intel}`,
-          });
-        }
-
-        setCompetitorTabs((prev) => {
-          const existingIds = new Set(prev.map((t) => t.id));
-          const newTabs = response.competitors!
-            .filter((comp) => !existingIds.has(comp.id))
-            .map((comp) => ({
-              id: comp.id,
-              name: comp.name,
-              threatLevel: comp.threat_level,
-              competitor: comp,
-              targetCompany,
-            }));
-          return newTabs.length > 0 ? [...prev, ...newTabs] : prev;
-        });
-
-        setMessagesByTab((prev) => {
-          const updated = { ...prev };
-          let changed = false;
-          for (const comp of response.competitors!) {
-            if (!updated[comp.id]) {
-              updated[comp.id] = [];
-              changed = true;
+      await ApiService.sendMessageStream(
+        userMessage,
+        // onStep: add a reasoning message per step
+        (step, summary, status) => {
+          if (status === "pending") {
+            let messageId = pendingStepMessageIds.current.get(step);
+            if (messageId) {
+              updateMessageContent(tabId, messageId, step, summary, "pending");
+            } else {
+              const newMessage = addMessage(tabId, {
+                sender: "SYSTEM",
+                text: step,
+                isReasoning: true,
+                reasoningStatus: "pending",
+                reasoningSummary: summary,
+              });
+              pendingStepMessageIds.current.set(step, newMessage.id);
             }
+          } else if (status === "complete") {
+            const messageId = pendingStepMessageIds.current.get(step);
+            if (messageId !== undefined) {
+              updateMessageContent(tabId, messageId, step, summary, "complete");
+              pendingStepMessageIds.current.delete(step); // Remove from map once complete
+            }
+            }
+        },
+        // onDone: process final response payload
+        (response) => {
+          pendingStepMessageIds.current.clear(); // Clear any remaining pending steps
+          // Instead of processing directly, check if confirmation is needed
+          if (tabId === "main" && response.dossier) {
+            setPendingResponse(response);
+            setPendingUserInput(userMessage); // Capture original user input
+            // Keep isProcessing = true to disable input until confirmation
+          } else {
+            // No dossier or not main tab, process immediately
+            processFinalResponse(response, tabId);
+            setIsProcessing(false); // Only set false if no confirmation is pending
+            setTimeout(() => setColonelSpeaking(false), 2000);
           }
-          return changed ? updated : prev;
-        });
-
-        setSelectableCompetitors(response.competitors);
-      }
-
-      if (response.dossier) {
-        setDossierData(response.dossier);
-      }
-
-      setLastFailedMessage(null);
-    } catch (error) {
-      handleError(error);
+        },
+        // onError
+        (error) => {
+          pendingStepMessageIds.current.clear(); // Clear any remaining pending steps
+          handleError(error, tabId);
+        },
+        undefined, // frequency
+        history,
+        sessionId,
+        tabId !== "main" ? tabId : undefined, // competitorId
+      );
     } finally {
-      setIsProcessing(false);
-      setTimeout(() => setColonelSpeaking(false), 2000);
+      // isProcessing is now controlled by confirmation flow if pendingResponse is set
+      // setIsProcessing(false); // This is handled by confirmation or direct call
+      // setIsThinking(false); // This is handled by processFinalResponse or direct call
+      // setTimeout(() => setColonelSpeaking(false), 2000); // This is handled by confirmation or direct call
     }
-  };
+  }, [activeSessionId, currentSession, messagesByTab, sessionId, addMessage, handleError, setSelectableCompetitors, setCompetitorTabs, setMessagesByTab, setDossierData, triggerSessionTitleSummarization, updateMessageContent]);
 
-  const loadCompetitorDrilldown = async (tabId: string) => {
+  const loadCompetitorDrilldown = useCallback(async (tabId: string) => {
     const tab = competitorTabs.find((t) => t.id === tabId);
     if (!tab || tab.drilldown) return;
 
@@ -274,96 +504,103 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
     });
     setIsProcessing(true);
     setIsThinking(true);
+    pendingStepMessageIds.current.clear(); // Clear pending steps for a new drilldown
 
     try {
-      const drilldown = await fetchCompetitorDrilldown(tab.id);
+      const drilldown = await ApiService.fetchCompetitorDrilldown(tab.id);
 
-      await showReasoningSteps(tabId, drilldown.reasoning);
-      setIsThinking(false);
+      // Show reasoning steps (one at a time, updating the current reasoning message)
+      for (const step of drilldown.reasoning) {
+        let messageId = pendingStepMessageIds.current.get(step.step);
+        if (messageId) {
+          updateMessageContent(
+            tabId,
+            messageId,
+            step.step,
+            step.summary,
+            step.status as "pending" | "complete",
+          );
+        } else {
+          const newMessage = addMessage(tabId, {
+            sender: "SYSTEM",
+            text: step.step,
+            isReasoning: true,
+            reasoningStatus: step.status as "pending" | "complete",
+            reasoningSummary: step.summary,
+          });
+          messageId = newMessage.id;
+          pendingStepMessageIds.current.set(step.step, messageId);
+        }
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Mark as complete after delay
+        updateMessageContent(tabId, messageId, step.step, step.summary, "complete");
+        pendingStepMessageIds.current.delete(step.step);
+      }
 
-      setTokenCount((prev) => prev + drilldown.tokensUsed);
-      setMemoryUsage(drilldown.intelLevel);
-
+      // Show the initial summary of findings as a COLONEL message
       setColonelSpeaking(true);
       addMessage(tabId, { sender: "COLONEL", text: drilldown.finalAnalysis });
 
-      await new Promise<void>((resolve) => setTimeout(resolve, 400));
-      addMessage(tabId, {
-        sender: "INTEL",
-        text: `MARKET SHARE: ${drilldown.details.marketShare}`,
-      });
-
-      await new Promise<void>((resolve) => setTimeout(resolve, 300));
-      addMessage(tabId, {
-        sender: "INTEL",
-        text: `KEY PRODUCTS: ${drilldown.details.keyProducts.join(" | ")}`,
-      });
-
-      await new Promise<void>((resolve) => setTimeout(resolve, 300));
-      addMessage(tabId, {
-        sender: "INTEL",
-        text: `WEAKNESSES: ${drilldown.details.weaknesses.join(" | ")}`,
-      });
-
-      await new Promise<void>((resolve) => setTimeout(resolve, 400));
-      addMessage(tabId, {
-        sender: "COLONEL",
-        text: `RECOMMENDATION: ${drilldown.details.recommendation}`,
-      });
-
+      // Mark the tab as loaded so it's won't re-fetch on revisit
       setCompetitorTabs((prev) =>
-        prev.map((t) => (t.id === tabId ? { ...t, drilldown } : t)),
+        prev.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                drilldown: {
+                  reasoning: drilldown.reasoning.map(r => ({
+                    step: r.step,
+                    summary: r.summary,
+                    status: r.status as 'pending' | 'complete',
+                  })),
+                  finalAnalysis: drilldown.finalAnalysis,
+                  intelLevel: drilldown.intelLevel,
+                  tokensUsed: drilldown.tokensUsed,
+                  details: {
+                    marketShare: drilldown.details.marketShare,
+                    keyProducts: drilldown.details.keyProducts,
+                    weaknesses: drilldown.details.weaknesses,
+                    recommendation: drilldown.details.recommendation,
+                  },
+                },
+              }
+            : t,
+        ),
       );
     } catch (error) {
       handleError(error, tabId);
     } finally {
       setIsProcessing(false);
+      setIsThinking(false);
       setTimeout(() => setColonelSpeaking(false), 2000);
     }
-  };
+  }, [addMessage, competitorTabs, handleError, setCompetitorTabs, updateMessageContent]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
     if (tabId !== "main" && !isProcessing) {
       const tab = competitorTabs.find((t) => t.id === tabId);
       if (tab && !tab.drilldown) {
-        playCodecAudio();
+        //play();
         void loadCompetitorDrilldown(tabId);
       }
     }
   };
 
   const handleCompetitorSelect = (competitor: CompetitorData) => {
-    playCodecAudio();
+    //play();
     handleTabChange(competitor.id);
   };
 
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
-    playCodecAudio();
     const userMessage = input.trim();
     setInput("");
     setSelectableCompetitors(null);
 
-    if (activeTab !== "main") {
-      setActiveTab("main");
-    }
 
-    if (!hasFiredFirstMessage.current && onFirstMessage) {
-      hasFiredFirstMessage.current = true;
-      onFirstMessage(userMessage);
-    }
-
-    addMessage("main", { sender: "SNAKE", text: userMessage });
-    await processMessage(userMessage);
-  };
-
-  const handleRetry = async () => {
-    playCodecAudio();
-    setSignalLost(false);
-    if (lastFailedMessage) {
-      await processMessage(lastFailedMessage);
-    }
+    addMessage(activeTab, { sender: "SNAKE", text: userMessage });
+    await processMessageOnTab(activeTab, userMessage);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -393,20 +630,20 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
 
   return (
     <div className="flex flex-col h-svh bg-background overflow-hidden relative">
-      <ScanlineOverlay />
-      <SignalLostOverlay visible={signalLost} onDismiss={handleRetry} />
-      <CodecErrorDialog
+      <ErrorDialog
         visible={errorDialogVisible}
         errorType={errorType}
         companyName={errorCompanyName}
         onDismiss={() => setErrorDialogVisible(false)}
+        variant="codec"
       />
       {dossierData && (
-        <IntelDossierPanel
+        <DossierPanel
           dossier={dossierData}
           visible={dossierVisible}
           onClose={() => setDossierVisible(false)}
           onDownloadDossier={handleDownloadDossier}
+          variant="codec"
         />
       )}
 
@@ -427,7 +664,7 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
 
       {/* Competitor Tabs */}
       {showTabBar && (
-        <CompetitorTabs
+        <DossierTabs
           activeTab={activeTab}
           tabs={competitorTabs.map((t) => ({
             id: t.id,
@@ -440,6 +677,7 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
           onDownloadSummary={handleDownloadSummary}
           onDownloadDossier={handleDownloadDossier}
           hasDossier={!!dossierData}
+          variant="codec"
         />
       )}
 
@@ -474,11 +712,23 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
             ))}
           </AnimatePresence>
 
+          {pendingResponse && pendingResponse.dossier && (
+            <CompanyConfirmation
+              resolvedName={pendingResponse.dossier.targetCompany}
+              userInput={pendingUserInput ?? ""}
+              onConfirm={handleConfirmCompany}
+              onAbort={handleAbortCompany}
+            />
+          )}
+
           {activeTab === "main" && unexploredCompetitors && unexploredCompetitors.length > 0 && !isProcessing && (
             <CompetitorPicker
               competitors={unexploredCompetitors}
               onSelect={handleCompetitorSelect}
               disabled={isProcessing}
+              headingText="▶ SELECT TARGET FOR DEEP RECON"
+              borderClassName="codec-border"
+              strongBorderClassName="codec-border-strong"
             />
           )}
 
@@ -521,22 +771,26 @@ const CodecScreen = ({ sessionId, onFirstMessage }: CodecScreenProps) => {
       <div className="px-4 sm:px-6 pb-5 pt-2">
         <div className="max-w-3xl mx-auto">
           <div
-            className="flex items-center gap-3 rounded-2xl border border-border bg-muted/40 px-4 py-3 focus-within:border-foreground/40 transition-colors"
-            style={{ boxShadow: "0 0 12px hsl(153 90% 61% / 0.06)" }}
+            className="flex items-center gap-3 rounded-2xl border border-foreground/40 bg-muted px-4 py-3 focus-within:border-foreground/70 transition-colors"
+            style={{ boxShadow: "0 0 14px hsl(153 90% 61% / 0.25)" }}
           >
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={activeTab === "main" ? "Send a message..." : "Switch to COMMS tab to transmit..."}
-              disabled={isProcessing}
-              className="flex-1 bg-transparent border-none outline-none text-foreground text-base placeholder:text-muted-foreground/60 font-mono disabled:opacity-50"
+              placeholder={
+                activeTab === "main"
+                  ? "Send a message..."
+                  : `Ask a follow-up about ${competitorTabs.find((t) => t.id === activeTab)?.name ?? "this target"}...`
+              }
+              disabled={isProcessing || pendingResponse !== null}
+              className="flex-1 bg-transparent border-none outline-none text-foreground text-base placeholder:text-foreground/50 font-mono disabled:opacity-50"
             />
             <button
               onClick={handleSend}
-              disabled={isProcessing || !input.trim()}
-              className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-foreground/10 text-foreground hover:bg-foreground/20 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+              disabled={isProcessing || !input.trim() || pendingResponse !== null}
+              className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-foreground/20 text-foreground hover:bg-foreground/35 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                 <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />

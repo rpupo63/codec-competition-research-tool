@@ -1,13 +1,16 @@
 import { motion } from "framer-motion";
-import type { CompetitorData } from "@/types/codec";
+import type { CompetitorData } from "@/types/common";
 
 interface CompetitorPickerProps {
   competitors: CompetitorData[];
   onSelect: (competitor: CompetitorData) => void;
   disabled?: boolean;
+  headingText: string;
+  borderClassName: string;
+  strongBorderClassName: string;
 }
 
-const CompetitorPicker = ({ competitors, onSelect, disabled }: CompetitorPickerProps) => {
+const CompetitorPicker = ({ competitors, onSelect, disabled, headingText, borderClassName, strongBorderClassName }: CompetitorPickerProps) => {
   const threatColor: Record<string, string> = {
     LOW: "text-muted-foreground",
     MODERATE: "text-foreground",
@@ -22,7 +25,7 @@ const CompetitorPicker = ({ competitors, onSelect, disabled }: CompetitorPickerP
       className="my-3"
     >
       <div className="text-[10px] text-muted-foreground tracking-[0.3em] uppercase mb-2">
-        ▶ SELECT TARGET FOR DEEP RECON
+        {headingText}
       </div>
       <div className="flex flex-col gap-2">
         {competitors.map((comp) => (
@@ -30,7 +33,7 @@ const CompetitorPicker = ({ competitors, onSelect, disabled }: CompetitorPickerP
             key={comp.id}
             onClick={() => onSelect(comp)}
             disabled={disabled}
-            className="text-left px-3 py-2 codec-border bg-muted/50 hover:bg-accent hover:codec-border-strong transition-all disabled:opacity-30 disabled:cursor-not-allowed group"
+            className={`text-left px-3 py-2 ${borderClassName} bg-muted/50 hover:bg-accent hover:${strongBorderClassName} transition-all disabled:opacity-30 disabled:cursor-not-allowed group`}
           >
             <div className="flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">

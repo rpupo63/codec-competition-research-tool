@@ -5,12 +5,13 @@ interface FrequencyDisplayProps {
   tokenCount: number;    // cumulative tokens used — displayed as the "frequency" number
   memoryUsage: number;   // 0-100, from API intelLevel
   isThinking: boolean;   // bars only animate when AI is processing
+  borderClassName?: string;
 }
 
 const BAR_COUNT = 32;
 
-const FrequencyDisplay = ({ tokenCount, memoryUsage, isThinking }: FrequencyDisplayProps) => {
-  // Format token count as a codec-style frequency (e.g., 1,247 → "124.70")
+const FrequencyDisplay = ({ tokenCount, memoryUsage, isThinking, borderClassName = "codec-border" }: FrequencyDisplayProps) => {
+  // Format token count as a frequency (e.g., 1,247 → "124.70")
   const formattedTokens = useMemo(() => {
     const padded = String(tokenCount).padStart(5, "0");
     const whole = padded.slice(0, -2) || "0";
@@ -89,7 +90,7 @@ const FrequencyDisplay = ({ tokenCount, memoryUsage, isThinking }: FrequencyDisp
           <span>MEMORY</span>
           <span>{memoryUsage}%</span>
         </div>
-        <div className="h-2 bg-muted rounded-sm overflow-hidden codec-border">
+        <div className={`h-2 bg-muted rounded-sm overflow-hidden ${borderClassName}`}>
           <motion.div
             className="h-full bg-foreground"
             animate={{ width: `${memoryUsage}%` }}

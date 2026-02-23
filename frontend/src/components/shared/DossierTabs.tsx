@@ -1,21 +1,20 @@
 import { Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { TabEntry } from "@/types/common";
+import type { CompetitorAnalysisReport } from "@/types/report"; // Only needed for report variant
 
-interface CompetitorTabEntry {
-  id: string;
-  name: string;
-  threatLevel: string;
-  loaded: boolean;
-  targetCompany: string;
-}
-
-interface CompetitorTabsProps {
+interface DossierTabsProps {
   activeTab: string;
-  tabs: CompetitorTabEntry[];
+  tabs: TabEntry[];
   onTabChange: (tabId: string) => void;
-  onDownloadSummary: () => void;
-  onDownloadDossier: () => void;
-  hasDossier: boolean;
+  variant: "codec" | "report";
+  // Codec specific
+  onDownloadSummary?: () => void;
+  onDownloadDossier?: () => void;
+  hasDossier?: boolean;
+  // Report specific
+  dossierData?: CompetitorAnalysisReport | null; // Optional for codec variant
+  setDossierVisible?: (visible: boolean) => void; // Optional for codec variant
 }
 
 const THREAT_DOT_COLOR: Record<string, string> = {
@@ -25,28 +24,35 @@ const THREAT_DOT_COLOR: Record<string, string> = {
   CRITICAL: "bg-destructive",
 };
 
-const CompetitorTabs = ({
+const DossierTabs = ({
   activeTab,
   tabs,
   onTabChange,
+  variant,
   onDownloadSummary,
   onDownloadDossier,
   hasDossier,
-}: CompetitorTabsProps) => {
+  dossierData,
+  setDossierVisible,
+}: DossierTabsProps) => {
   const activeTabInfo = tabs.find((t) => t.id === activeTab);
-  const showDownloads = activeTabInfo?.loaded;
+  const showDownloads = activeTabInfo?.loaded && variant === "codec";
 
-  const groups: [string, CompetitorTabEntry[]][] = [];
-  const seen = new Map<string, CompetitorTabEntry[]>();
+  const groups: [string, TabEntry[]][] = [];
+  const seen = new Map<string, TabEntry[]>();
   for (const tab of tabs) {
     const key = tab.targetCompany;
     if (!seen.has(key)) {
-      const arr: CompetitorTabEntry[] = [];
+      const arr: TabEntry[] = [];
       seen.set(key, arr);
       groups.push([key, arr]);
     }
     seen.get(key)!.push(tab);
   }
+
+  const borderClass = variant === "codec" ? "codec-border" : "report-border";
+  const borderStrongClass = variant === "codec" ? "codec-border-strong" : "report-border-strong";
+  const mainTabLabel = variant === "codec" ? "◈ COMMS" : "◈ CHAT";
 
   return (
     <div className="px-4 sm:px-8 pt-2">
@@ -55,12 +61,21 @@ const CompetitorTabs = ({
           onClick={() => onTabChange("main")}
           className={`shrink-0 px-3 py-1.5 text-[10px] tracking-[0.2em] font-bold transition-all ${
             activeTab === "main"
-              ? "codec-border-strong text-foreground text-glow-strong"
-              : "codec-border text-muted-foreground hover:text-foreground"
+              ? `${borderStrongClass} text-foreground text-glow-strong`
+              : `${borderClass} text-muted-foreground hover:text-foreground`
           }`}
         >
-          ◈ COMMS
+          {mainTabLabel}
         </button>
+
+        {variant === "report" && dossierData && setDossierVisible && (
+          <button
+            onClick={() => setDossierVisible(true)}
+            className={`shrink-0 px-3 py-1.5 text-[10px] tracking-[0.2em] font-bold transition-all ${borderClass} text-muted-foreground hover:text-foreground`}
+          >
+            ◈ OPEN REPORT
+          </button>
+        )}
 
         {groups.map(([company, groupTabs]) => (
           <Fragment key={company}>
@@ -78,10 +93,10 @@ const CompetitorTabs = ({
                   onClick={() => onTabChange(tab.id)}
                   className={`shrink-0 px-3 py-1.5 text-[10px] tracking-[0.15em] font-bold transition-all flex items-center gap-2 ${
                     activeTab === tab.id
-                      ? "codec-border-strong text-foreground text-glow-strong"
+                      ? `${borderStrongClass} text-foreground text-glow-strong`
                       : tab.loaded
-                        ? "codec-border text-muted-foreground hover:text-foreground"
-                        : "codec-border text-muted-foreground/50 hover:text-muted-foreground"
+                        ? `${borderClass} text-muted-foreground hover:text-foreground`
+                        : `${borderClass} text-muted-foreground/50 hover:text-muted-foreground`
                   }`}
                 >
                   <span
@@ -100,7 +115,7 @@ const CompetitorTabs = ({
       </div>
 
       <AnimatePresence>
-        {showDownloads && (
+        {showDownloads && onDownloadSummary && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -110,14 +125,14 @@ const CompetitorTabs = ({
           >
             <button
               onClick={onDownloadSummary}
-              className="text-[9px] tracking-[0.2em] text-muted-foreground hover:text-foreground hover:text-glow px-2 py-1 codec-border transition-all uppercase"
+              className={`text-[9px] tracking-[0.2em] text-muted-foreground hover:text-foreground hover:text-glow px-2 py-1 ${borderClass} transition-all uppercase`}
             >
               ▼ DOWNLOAD SUMMARY
             </button>
-            {hasDossier && (
+            {hasDossier && onDownloadDossier && (
               <button
                 onClick={onDownloadDossier}
-                className="text-[9px] tracking-[0.2em] text-muted-foreground hover:text-foreground hover:text-glow px-2 py-1 codec-border transition-all uppercase"
+                className={`text-[9px] tracking-[0.2em] text-muted-foreground hover:text-foreground hover:text-glow px-2 py-1 ${borderClass} transition-all uppercase`}
               >
                 ▼ DOWNLOAD DOSSIER
               </button>
@@ -134,4 +149,4 @@ const CompetitorTabs = ({
   );
 };
 
-export default CompetitorTabs;
+export default DossierTabs;

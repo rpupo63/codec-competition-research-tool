@@ -1,4 +1,4 @@
-import { Plus, MessageSquare, Trash2 } from "lucide-react";
+import { Plus, MessageSquare, Trash2, FolderKanban } from "lucide-react";
 import { useChatSession } from "@/contexts/ChatSessionContext";
 import {
   Sidebar,
@@ -13,6 +13,7 @@ import {
   SidebarMenuButton,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { NavLink } from "react-router-dom";
 
 function groupSessionsByDate(
   sessions: { id: string; title: string; createdAt: number }[],
@@ -63,6 +64,24 @@ export default function ChatSidebar() {
           <span>NEW OPERATION</span>
         </button>
       </SidebarHeader>
+
+      <SidebarGroup>
+        <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.2em] text-sidebar-foreground/50">
+          OPERATIONS
+        </SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <NavLink to="/operations" className="w-full">
+                <SidebarMenuButton tooltip="All Operations">
+                  <FolderKanban className="w-4 h-4 shrink-0" />
+                  <span className="truncate">All Operations</span>
+                </SidebarMenuButton>
+              </NavLink>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
 
       <SidebarContent>
         {groups.map((group) => (
