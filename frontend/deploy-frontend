@@ -1,0 +1,192 @@
+#!/bin/bash
+set -e
+
+# ────── Config ────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
+DIST_DIR="$PROJECT_DIR/dist"
+
+# ────── Colors ────────────────────────────────────────────────
+GREEN="\e[32m"
+RED="\e[31m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+RESET="\e[0m"
+
+log_success() { echo -e "${GREEN}[✓] $1${RESET}"; }
+log_error()   { echo -e "${RED}[✗] $1${RESET}"; }
+log_info()    { echo -e "${YELLOW}[→] $1${RESET}"; }
+log_step()    { echo -e "${BLUE}[•] $1${RESET}"; }
+
+# ────── Pre-flight checks ──────────────────────────────────────
+log_step "Running pre-flight checks..."
+
+# Check if npx is available (we use npx wrangler, so no need to install locally)
+if ! command -v npx &> /dev/null; then
+    log_error "npx not found. Please install Node.js and npm."
+    exit 1
+fi
+
+# Check if we're in the right directory
+if [[ ! -f "$PROJECT_DIR/package.json" ]]; then
+    log_error "package.json not found in $PROJECT_DIR"
+    exit 1
+fi
+
+log_success "Pre-flight checks passed"
+
+# ────── Clean previous build ───────────────────────────────────
+log_step "Cleaning previous build..."
+if [[ -d "$DIST_DIR" ]]; then
+    rm -rf "$DIST_DIR"
+    log_success "Previous build cleaned"
+else
+    log_info "No previous build found (first deployment)"
+fi
+
+# Clear Vite cache to ensure clean build
+if [[ -d "$PROJECT_DIR/node_modules/.vite" ]]; then
+    log_step "Clearing Vite cache..."
+    rm -rf "$PROJECT_DIR/node_modules/.vite"
+    log_success "Vite cache cleared"
+fi
+
+# ────── Ensure no localhost .env file interferes ────────────────
+log_step "Checking for .env files..."
+ENV_BACKED_UP=false
+
+# Check and backup all .env file variants that might contain localhost
+for env_file in "$PROJECT_DIR/.env" "$PROJECT_DIR/.env.local" "$PROJECT_DIR/.env.production" "$PROJECT_DIR/.env.production.local"; do
+    if [[ -f "$env_file" ]]; then
+        log_info "Found $(basename "$env_file") - checking for localhost..."
+        if grep -q "localhost\|127.0.0.1" "$env_file" 2>/dev/null; then
+            log_info "Temporarily backing up $(basename "$env_file")..."
+            mv "$env_file" "${env_file}.backup"
+            ENV_BACKED_UP=true
+            log_success "$(basename "$env_file") backed up"
+        fi
+    fi
+done
+
+if [[ "$ENV_BACKED_UP" == "false" ]]; then
+    log_info "No .env files with localhost found"
+fi
+
+# ────── Build ──────────────────────────────────────────────────
+log_step "Building production bundle..."
+cd "$PROJECT_DIR"
+
+# Unset any existing VITE_API_URL to ensure clean state
+unset VITE_API_BASE_URL
+
+# Ensure production API URL is used (override any localhost .env files)
+# Note: frontend code already adds /api/ prefix, so we just need the base URL
+export VITE_API_BASE_URL=https://api.distro-interview.xyz
+
+log_info "Building with VITE_API_URL=https://api.distro-interview.xyz"
+
+if npm run build; then
+    log_success "Build completed successfully"
+else
+    log_error "Build failed"
+    exit 1
+fi
+
+# Verify dist directory was created
+if [[ ! -d "$DIST_DIR" ]]; then
+    log_error "dist directory not found after build"
+    exit 1
+fi
+
+# Verify build doesn't contain localhost URLs
+log_step "Verifying build doesn't contain localhost URLs..."
+
+# First, check what API URL is actually being used in the build
+log_info "Checking API URL in build..."
+API_URL_IN_BUILD=$(grep -roE "api\.distro-interview\.xyz|localhost:8080|127\.0\.0\.1:8080" "$DIST_DIR" --include="*.js" 2>/dev/null | head -5 || true)
+
+if echo "$API_URL_IN_BUILD" | grep -q "api.distro-interview.xyz"; then
+    log_success "Found api.distro-interview.xyz in build - good!"
+fi
+
+if echo "$API_URL_IN_BUILD" | grep -qE "localhost:8080|127\.0\.0\.1:8080"; then
+    log_error "Found localhost URLs in build!"
+    log_info "Found: $API_URL_IN_BUILD"
+    
+    # Check if it's in actual runtime code or just comments/source maps
+    API_CALLS_WITH_LOCALHOST=$(grep -rE "(fetch|axios|http)\(.*localhost|baseURL.*localhost|VITE_API_BASE_URL.*localhost" "$DIST_DIR" --include="*.js" 2>/dev/null | head -3 || true)
+    
+    if [[ -n "$API_CALLS_WITH_LOCALHOST" ]]; then
+        log_error "Found actual runtime code with localhost! This is a problem."
+        log_info "$API_CALLS_WITH_LOCALHOST"
+        
+        # Restore .env files before exit
+        for env_file in "$PROJECT_DIR/.env" "$PROJECT_DIR/.env.local" "$PROJECT_DIR/.env.production" "$PROJECT_DIR/.env.production.local"; do
+            if [[ -f "${env_file}.backup" ]]; then
+                mv "${env_file}.backup" "$env_file"
+            fi
+        done
+        
+        exit 1
+    else
+        log_info "Localhost found but not in runtime code - might be in comments or source maps"
+    fi
+fi
+
+log_success "Build verification complete"
+
+# Show build output summary
+log_info "Build summary:"
+echo "  Total files: $(find "$DIST_DIR" -type f | wc -l)"
+echo "  Total size:  $(du -sh "$DIST_DIR" | cut -f1)"
+echo ""
+
+# ────── Deploy ─────────────────────────────────────────────────
+log_step "Deploying to Cloudflare Pages..."
+
+# Check if user is logged in or has API token
+if [[ -z "$CLOUDFLARE_API_TOKEN" ]] && ! npx wrangler whoami &>/dev/null; then
+    log_info "Not authenticated with Cloudflare. Initiating login..."
+    echo ""
+    log_info "Choose authentication method:"
+    echo "  1. Browser login (recommended for first time)"
+    echo "  2. Set CLOUDFLARE_API_TOKEN environment variable"
+    echo ""
+    read -p "Run 'wrangler login' now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        npx wrangler login
+    else
+        log_error "Deployment cancelled. To deploy later:"
+        echo "  • Run: CLOUDFLARE_API_TOKEN=your_token ./deploy.sh"
+        echo "  • Or run: npx wrangler login && ./deploy.sh"
+        exit 1
+    fi
+fi
+
+if npx wrangler pages deploy "$DIST_DIR" --project-name=distro-interview --branch=main; then
+    log_success "Deployment completed successfully!"
+else
+    log_error "Deployment failed"
+    # Restore .env files if they were backed up
+    for env_file in "$PROJECT_DIR/.env" "$PROJECT_DIR/.env.local" "$PROJECT_DIR/.env.production" "$PROJECT_DIR/.env.production.local"; do
+        if [[ -f "${env_file}.backup" ]]; then
+            mv "${env_file}.backup" "$env_file"
+            log_info "$(basename "$env_file") restored"
+        fi
+    done
+    exit 1
+fi
+
+# Restore .env files if they were backed up
+for env_file in "$PROJECT_DIR/.env" "$PROJECT_DIR/.env.local" "$PROJECT_DIR/.env.production" "$PROJECT_DIR/.env.production.local"; do
+    if [[ -f "${env_file}.backup" ]]; then
+        mv "${env_file}.backup" "$env_file"
+        log_success "$(basename "$env_file") restored"
+    fi
+done
+
+# ────── Post-deployment ────────────────────────────────────────
+echo ""
+log_success "🚀 Deployment complete!"
+log_info "Deployment timestamp: $(date)"

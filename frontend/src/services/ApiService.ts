@@ -37,12 +37,16 @@ import type { ChatResponse, CompetitorReasoning as ReasoningStep, IntelDossier }
 
 export type IntelDossierResponse = IntelDossier;
 
+export interface CompanyResolvedPayload {
+  resolvedName: string;
+}
+
 export interface SseEvent {
   type: string;
   step?: string;
   summary?: string;
   status?: string;
-  payload?: ChatResponse;
+  payload?: ChatResponse | CompanyResolvedPayload; // Use a union type
   error?: string;
 }
 
@@ -180,7 +184,7 @@ export async function summarizeSessionTitle(
 
 export async function sendMessageStream(
   message: string,
-  onStep: (step: string, summary: string, status: string) => void,
+  onStep: (event: SseEvent) => void, // Changed signature
   onDone: (response: ChatResponse) => void,
   onError: (error: any) => void, // eslint-disable-line @typescript-eslint/no-explicit-any
   frequency: string | undefined,
@@ -234,9 +238,8 @@ export async function sendMessageStream(
           const event: SseEvent = JSON.parse(jsonStr);
           switch (event.type) {
             case "step":
-              if (event.step && event.summary && event.status) {
-                onStep(event.step, event.summary, event.status);
-              }
+              // Pass the entire event object to onStep
+              onStep(event);
               break;
             case "done":
               if (event.payload) {

@@ -95,6 +95,8 @@ const CodecScreen = () => {
   const [activeNewId, setActiveNewId] = useState<number | null>(null);
   const [selectableCompetitors, setSelectableCompetitors] = useState<CompetitorData[] | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<{ userInput: string; response?: ChatResponse | null } | null>(null);
+  const [isConfirmationPending, setIsConfirmationPending] = useState(false);
+  const [bufferedMessages, setBufferedMessages] = useState<Message[]>([]);
 
   const [errorDialogVisible, setErrorDialogVisible] = useState(false);
   const [errorType, setErrorType] = useState<ErrorType | null>(null);
@@ -109,17 +111,23 @@ const CodecScreen = () => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const pendingStepMessageIds = useRef<Map<string, number>>(new Map());
 
-  const addMessage = useCallback((tabId: string, msg: Omit<Message, "id">) => {
-    const id = nextId.current++;
-    const newMessage = { ...msg, id };
-    setMessagesByTab((prev) => ({
-      ...prev,
-      [tabId]: [...(prev[tabId] || []), newMessage],
-    }));
-    setActiveNewId(id);
-    return newMessage; // Return the full message object
-  }, []);
-
+    const addMessage = useCallback((tabId: string, msg: Omit<Message, "id">) => {
+      const id = nextId.current++;
+      const newMessage = { ...msg, id };
+  
+      // If confirmation is pending, buffer messages for the main tab.
+      // Other tabs can still receive messages normally.
+      if (tabId === "main" && isConfirmationPending) {
+        setBufferedMessages((prev) => [...prev, newMessage]);
+      } else {
+        setMessagesByTab((prev) => ({
+          ...prev,
+          [tabId]: [...(prev[tabId] || []), newMessage],
+        }));
+      }
+      setActiveNewId(id);
+      return newMessage; // Return the full message object
+    }, [isConfirmationPending]); // Corrected dependencies
   const processFinalResponse = useCallback((response: ChatResponse, inputTabId: string) => {
       setIsThinking(false);
       setTokenCount((prev) => prev + response.tokensUsed);
@@ -248,6 +256,9 @@ const CodecScreen = () => {
         // If main tab has no persisted messages, show the initial greeting
         if (!grouped.main || grouped.main.length === 0) {
           grouped.main = [INITIAL_MESSAGE];
+          hasFiredFirstMessage.current = false; // New session, first message not fired
+        } else {
+          hasFiredFirstMessage.current = true; // Existing session with messages, first message already fired
         }
 
         // Recreate competitor tabs; mark those with existing messages as already-loaded
@@ -313,21 +324,37 @@ const CodecScreen = () => {
       newSummary: string | undefined,
       newReasoningStatus: "pending" | "complete" | undefined,
     ) => {
-      setMessagesByTab((prev) => ({
-        ...prev,
-        [tabId]: (prev[tabId] || []).map((m) =>
-          m.id === msgId
-            ? {
-                ...m,
-                text: newText,
-                reasoningSummary: newSummary,
-                reasoningStatus: newReasoningStatus,
-              }
-            : m,
-        ),
-      }));
+      // Check if the message is in bufferedMessages
+      if (tabId === "main" && isConfirmationPending) {
+        setBufferedMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId
+              ? {
+                  ...m,
+                  text: newText,
+                  reasoningSummary: newSummary,
+                  reasoningStatus: newReasoningStatus,
+                }
+              : m,
+          ),
+        );
+      } else {
+        setMessagesByTab((prev) => ({
+          ...prev,
+          [tabId]: (prev[tabId] || []).map((m) =>
+            m.id === msgId
+              ? {
+                  ...m,
+                  text: newText,
+                  reasoningSummary: newSummary,
+                  reasoningStatus: newReasoningStatus,
+                }
+              : m,
+          ),
+        }));
+      }
     },
-    [],
+    [isConfirmationPending], // Add isConfirmationPending to dependencies
   );
 
     const handleError = useCallback((error: unknown, tabId: string = "main") => {
@@ -373,7 +400,7 @@ const CodecScreen = () => {
       }
     }, [addMessage]);
   
-    const executeResearch = useCallback(async (tabId: string, userMessage: string, history: ConversationTurn[]) => {
+    const executeResearch = useCallback(async (tabId: string, userMessage: string, history: ConversationTurn[], isInitialQuery: boolean) => {
       setIsProcessing(true);
       setIsThinking(true);
       setSelectableCompetitors(null);
@@ -382,35 +409,52 @@ const CodecScreen = () => {
       try {
         await ApiService.sendMessageStream(
           userMessage,
-          (step, summary, status) => { // onStep
-            if (status === "pending") {
-              const messageId = pendingStepMessageIds.current.get(step);
-              if (messageId) {
-                updateMessageContent(tabId, messageId, step, summary, "pending");
-              } else {
-                const newMessage = addMessage(tabId, {
-                  sender: "SYSTEM",
-                  text: step,
-                  isReasoning: true,
-                  reasoningStatus: "pending",
-                  reasoningSummary: summary,
-                });
-                pendingStepMessageIds.current.set(step, newMessage.id);
-              }
-            } else if (status === "complete") {
-              const messageId = pendingStepMessageIds.current.get(step);
-              if (messageId !== undefined) {
-                updateMessageContent(tabId, messageId, step, summary, "complete");
-                pendingStepMessageIds.current.delete(step);
+          (event) => { // onStep now receives the full SseEvent
+            if (event.type === "company_resolved" && isInitialQuery && event.payload) {
+              const companyPayload = event.payload as CompanyResolvedPayload; // Type narrowing
+              setPendingConfirmation({ userInput: userMessage, response: { dossier: { targetCompany: companyPayload.resolvedName } } as ChatResponse });
+              setIsConfirmationPending(true);
+              return; // Stop processing further steps until confirmed
+            }
+
+            if (event.type === "step") {
+              const { step, summary, status } = event;
+              if (!step || !summary || !status) return; // Should not happen with valid step events
+
+              if (status === "pending") {
+                const messageId = pendingStepMessageIds.current.get(step);
+                if (messageId) {
+                  updateMessageContent(tabId, messageId, step, summary, "pending");
+                } else {
+                  const newMessage = addMessage(tabId, {
+                    sender: "SYSTEM",
+                    text: step,
+                    isReasoning: true,
+                    reasoningStatus: "pending",
+                    reasoningSummary: summary,
+                  });
+                  pendingStepMessageIds.current.set(step, newMessage.id);
+                }
+              } else if (status === "complete") {
+                const messageId = pendingStepMessageIds.current.get(step);
+                if (messageId !== undefined) {
+                  updateMessageContent(tabId, messageId, step, summary, "complete");
+                  pendingStepMessageIds.current.delete(step);
+                }
               }
             }
           },
           (response) => { // onDone
             pendingStepMessageIds.current.clear();
-            processFinalResponse(response, tabId);
+
+            if (isInitialQuery && response.dossier?.targetCompany) {
+              setPendingConfirmation({ userInput: userMessage, response: response });
+              // Do NOT call processFinalResponse yet
+            } else {
+              processFinalResponse(response, tabId);
+            }
             setIsProcessing(false);
             setIsConfirming(false); // End confirmation process
-            setTimeout(() => setColonelSpeaking(false), 2000);
           },
           (error) => { // onError
             handleError(error, tabId);
@@ -430,33 +474,38 @@ const CodecScreen = () => {
   
     const handleConfirmCompany = useCallback(async () => {
       if (!pendingConfirmation) return;
-  
-      const { userInput } = pendingConfirmation;
+
+      const { userInput, response: chatResponse } = pendingConfirmation;
+      if (!chatResponse) return;
+
       setIsConfirming(true);
+      setIsConfirmationPending(false); // Confirmation is no longer pending
       setPendingConfirmation(null); // Clear confirmation UI
-  
-      // Build history at the moment of confirmation
-      const history: ConversationTurn[] = (messagesByTab["main"] || [])
-        .filter(msg => msg.id !== 0 && !msg.isReasoning && msg.sender !== "INTEL" && msg.sender !== "SYSTEM")
-        .map(msg => ({
-          role: msg.sender === "SNAKE" ? "user" as const : "assistant" as const,
-          content: msg.text,
-        }));
-  
-      // Remove the user's message that triggered the confirmation, as we're about to process it.
-      history.pop();
-  
-      await executeResearch("main", userInput, history);
-  
-    }, [pendingConfirmation, executeResearch, messagesByTab]);
+
+      // Add buffered messages to the main chat
+      setMessagesByTab((prev) => ({
+        ...prev,
+        main: [...(prev.main || []), ...bufferedMessages],
+      }));
+      setBufferedMessages([]); // Clear buffered messages
+
+      // Now process the final response
+      processFinalResponse(chatResponse, "main");
+      setIsProcessing(false);
+      setIsThinking(false);
+      setTimeout(() => setColonelSpeaking(false), 2000);
+    }, [pendingConfirmation, processFinalResponse, bufferedMessages]);
   
     const handleAbortCompany = useCallback(() => {
       if (!pendingConfirmation) return;
+      
       addMessage("main", {
         sender: "COLONEL",
         text: "Mission aborted. Target unconfirmed. Re-enter company to try again.",
       });
       setPendingConfirmation(null);
+      setIsConfirmationPending(false); // Confirmation is no longer pending
+      setBufferedMessages([]); // Clear buffered messages
       setIsProcessing(false);
       setIsThinking(false);
       setIsConfirming(false);
@@ -470,14 +519,12 @@ const CodecScreen = () => {
           content: msg.text,
         }));
   
-      // If it's the first user message on the main tab, trigger confirmation first.
-      const isInitialQuery = tabId === "main" && history.length === 1;
-  
+      const isInitialQuery = tabId === "main" && !hasFiredFirstMessage.current;
+
+      // Always execute research, the confirmation will be handled in onDone of sendMessageStream
+      await executeResearch(tabId, userMessage, history, isInitialQuery);
       if (isInitialQuery) {
-        setPendingConfirmation({ userInput: userMessage });
-      } else {
-        // For follow-up messages or other tabs, execute research directly.
-        await executeResearch(tabId, userMessage, history);
+        hasFiredFirstMessage.current = true; // Mark that the first message has been fired
       }
     }, [messagesByTab, executeResearch]);
   
