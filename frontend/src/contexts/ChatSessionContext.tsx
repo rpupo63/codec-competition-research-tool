@@ -34,11 +34,15 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [hasAttemptedReplacementSessionCreation, setHasAttemptedReplacementSessionCreation] = useState(false);
+  const [hasInitiatedFallback, setHasInitiatedFallback] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   // On mount: fetch all sessions from backend; create one if none exist
   useEffect(() => {
+    if (hasInitiatedFallback) return; // Prevent re-execution after a fallback has occurred
+
     let cancelled = false;
     (async () => {
       try {
@@ -108,6 +112,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         console.error("Failed to load sessions:", e);
+        setHasInitiatedFallback(true); // Set the flag to prevent re-attempts
         // Fallback: temporary in-memory session so the app still works offline
         const fallbackId = `session-${Date.now()}`;
         const fallbackSession = { id: fallbackId, title: "New operation", createdAt: Date.now(), hasBeenSummarized: false };
@@ -121,11 +126,12 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [navigate, location.pathname, activeSessionId]);
+  }, [navigate, location.pathname, activeSessionId, hasInitiatedFallback]);
 
   // If sessions list becomes empty (last one deleted), create a new one
   useEffect(() => {
-    if (!isLoading && sessions.length === 0) {
+    if (!isLoading && sessions.length === 0 && !hasAttemptedReplacementSessionCreation) {
+      setHasAttemptedReplacementSessionCreation(true); // Mark that an attempt has been made
       void (async () => {
         try {
           const newSession = await ApiService.createSession("New operation");
@@ -139,10 +145,11 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
           setActiveSessionId(session.id);
         } catch (e) {
           console.error("Failed to create replacement session:", e);
+          // If creation fails, hasAttemptedReplacementSessionCreation remains true, preventing further attempts
         }
       })();
     }
-  }, [sessions.length, isLoading]);
+  }, [sessions.length, isLoading, hasAttemptedReplacementSessionCreation]);
 
   const createSession = useCallback(async () => {
     try {

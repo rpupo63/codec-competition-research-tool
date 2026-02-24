@@ -49,6 +49,7 @@ interface CompetitorTabInfo {
   competitor: CompetitorItem; 
   drilldown?: CompetitorDrilldown;
   targetCompany: string;
+  hasDebriefed: boolean;
 }
 
 interface ReportScreenProps {
@@ -197,6 +198,7 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
                   threat_level: c.threat_level as "LOW" | "MODERATE" | "HIGH" | "CRITICAL",
                 },
                 targetCompany: competitorData.dossier?.targetCompany ?? "",
+                hasDebriefed: false,
               }))
             );
           }
@@ -428,6 +430,7 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
                     threat_level: comp.threat_level as "LOW" | "MODERATE" | "HIGH" | "CRITICAL",
                   },
                   targetCompany,
+                  hasDebriefed: false,
                 }));
               return newTabs.length > 0 ? [...prev, ...newTabs] : prev;
             });
@@ -508,6 +511,17 @@ const ReportScreen = ({ onTitleReady }: ReportScreenProps) => {
   const loadCompetitorDrilldown = async (tabId: string) => {
     const tab = competitorTabs.find((t) => t.id === tabId);
     if (!tab || tab.drilldown) return;
+
+    if (!tab.hasDebriefed) {
+      setColonelSpeaking(true);
+      addMessage(tabId, { sender: "COLONEL", text: `Alright, agent. Let's dive deep into ${tab.name}'s operations. Stand by for the full drilldown.` });
+      await new Promise<void>((resolve) => setTimeout(resolve, 2000)); // Simulate Colonel speaking time
+      setColonelSpeaking(false);
+
+      setReportTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, hasDebriefed: true } : t)),
+      );
+    }
 
     addMessage(tabId, {
       sender: "SNAKE",

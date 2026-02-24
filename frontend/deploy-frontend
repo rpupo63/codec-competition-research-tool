@@ -77,13 +77,12 @@ log_step "Building production bundle..."
 cd "$PROJECT_DIR"
 
 # Unset any existing VITE_API_URL to ensure clean state
-unset VITE_API_BASE_URL
+unset VITE_API_URL
 
 # Ensure production API URL is used (override any localhost .env files)
-# Note: frontend code already adds /api/ prefix, so we just need the base URL
-export VITE_API_BASE_URL=https://api.distro-interview.xyz
+export VITE_API_URL=https://api.distro-interview.xyz/api
 
-log_info "Building with VITE_API_URL=https://api.distro-interview.xyz"
+log_info "Building with VITE_API_URL=https://api.distro-interview.xyz/api"
 
 if npm run build; then
     log_success "Build completed successfully"
