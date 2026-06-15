@@ -1,50 +1,19 @@
-# CODEC — Backend
+# Codec — Backend
 
-Go API server powering the competitive intelligence agent pipeline.
+Go API server powering the competitive intelligence agent pipeline behind the Codec briefing UI.
+
+**Live API**: [api.distro-interview.xyz](https://api.distro-interview.xyz/healthcheck)
 
 ## Stack
 
 - **Go 1.24** with **Chi v5** router
-- **GORM** + **PostgreSQL** for persistence
+- **GORM** + **PostgreSQL** (Supabase) for persistence
 - **Gemini Flash** (LLM), **EnrichLayer** (company data), **SerpAPI** (web search)
 - Server-Sent Events (SSE) for streaming agent progress to the frontend
 
-## Running locally
-
-### Prerequisites
-
-- Go 1.21+
-- PostgreSQL (or use `docker-compose up -d` from the repo root to start one)
-
-### Start
-
-```bash
-cd backend
-cp .env.example .env   # then fill in your API keys
-go run main.go
-```
-
-Server starts on `PORT` (default `8080`).
-
-> **Port conflict:** the frontend Vite dev server also defaults to 8080. Either set
-> `PORT=3001` in `backend/.env` and point `VITE_API_URL=http://localhost:3001/api` in
-> the frontend, or adjust `vite.config.ts`.
-
-## Environment variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `PORT` | No | HTTP listen port (default `8080`) |
-| `DATABASE_URL` | Yes | PostgreSQL connection string (`postgres://user:pass@host:5432/db`) |
-| `GEMINI_API_KEY` | Yes | Google Gemini Flash — used for all LLM calls |
-| `ENRICH_API_KEY` | Yes | EnrichLayer — company data + competitor discovery |
-| `SERP_API_KEY` | Yes | SerpAPI — web search snippets |
-| `ACCEPTED_ORIGINS` | No | Comma-separated CORS origins (default: none) |
-
 ## Agent pipeline
 
-`POST /api/chat/stream` runs the 5-step pipeline and streams `ProgressEvent`
-JSON objects as SSE before sending the final `done` payload.
+`POST /api/chat/stream` runs the 5-step pipeline and streams `ProgressEvent` JSON objects as SSE before sending the final `done` payload.
 
 ```
 Step 0  Extract company name + focus areas from the user message (LLM)
@@ -57,8 +26,7 @@ Step 5  Generate battle plan (LLM) → matrix, vulnerabilities, strike plans
         Persist everything to PostgreSQL
 ```
 
-All per-competitor work in steps 2–4 runs concurrently with `errgroup`. Individual
-failures are non-fatal — the pipeline continues with whatever data it has.
+All per-competitor work in steps 2–4 runs concurrently with `errgroup`. Individual failures are non-fatal.
 
 ## API endpoints
 
@@ -75,6 +43,42 @@ failures are non-fatal — the pipeline continues with whatever data it has.
 | `POST` | `/api/sessions/{id}/summarize` | Auto-summarize title via LLM |
 | `DELETE` | `/api/sessions/{id}` | Delete session |
 | `GET` | `/healthcheck` | Server uptime + timestamp |
+
+## Running locally
+
+### Prerequisites
+
+- Go 1.21+
+- PostgreSQL (or Supabase)
+
+### Start
+
+```bash
+cd backend
+cp .env.example .env   # then fill in your API keys
+go run main.go
+```
+
+Server starts on `PORT` (default `8080`). Set `PORT=3001` if running alongside the Vite dev server.
+
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `PORT` | No | HTTP listen port (default `8080`) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `GEMINI_API_KEY` | Yes | Google Gemini Flash |
+| `ENRICH_API_KEY` | Yes | EnrichLayer |
+| `SERP_API_KEY` | Yes | SerpAPI |
+| `ACCEPTED_ORIGINS` | No | Comma-separated CORS origins |
+
+## Deploy
+
+```bash
+./deploy-backend
+```
+
+Cross-compiles for linux/amd64, SCPs to RackNerd, restarts the `distro-interview` systemd service, and verifies `https://api.distro-interview.xyz/healthcheck`.
 
 ## Project layout
 
