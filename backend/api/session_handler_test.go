@@ -86,9 +86,9 @@ func (m *MockLLMClient) ClassifyIntent(history []services.ConversationTurn, newM
 	return args.String(0)
 }
 
-func (m *MockLLMClient) GenerateConversationalResponse(history []services.ConversationTurn, newMessage string) (string, error) {
+func (m *MockLLMClient) GenerateConversationalResponse(history []services.ConversationTurn, newMessage string) (string, int, error) {
 	args := m.Called(history, newMessage)
-	return args.String(0), args.Error(1)
+	return args.String(0), args.Int(1), args.Error(2)
 }
 
 func (m *MockLLMClient) ExtractCompanyName(message string, history []services.ConversationTurn) (string, int, error) {
@@ -96,29 +96,44 @@ func (m *MockLLMClient) ExtractCompanyName(message string, history []services.Co
 	return args.String(0), args.Int(1), args.Error(2)
 }
 
-func (m *MockLLMClient) ExtractFocusAreas(userPrompt string) ([]string, error) {
+func (m *MockLLMClient) ExtractFocusAreas(userPrompt string) ([]string, int, error) {
 	args := m.Called(userPrompt)
-	return args.Get(0).([]string), args.Error(1)
+	return args.Get(0).([]string), args.Int(1), args.Error(2)
 }
 
-func (m *MockLLMClient) SynthesizeCompetitor(companyName string, enrichData *services.EnrichCompanyData, serpSnippets []string) (*services.CompetitorSynthesis, error) {
+func (m *MockLLMClient) SynthesizeCompetitor(companyName string, enrichData *services.EnrichCompanyData, serpSnippets []string) (*services.CompetitorSynthesis, int, error) {
 	args := m.Called(companyName, enrichData, serpSnippets)
-	return args.Get(0).(*services.CompetitorSynthesis), args.Error(1)
+	return args.Get(0).(*services.CompetitorSynthesis), args.Int(1), args.Error(2)
 }
 
-func (m *MockLLMClient) GenerateBattlePlan(targetCompany string, focusAreas []string, syntheses map[string]*services.CompetitorSynthesis) (*services.BattlePlan, error) {
+func (m *MockLLMClient) NameOperation(targetCompany string, focusAreas []string, syntheses map[string]*services.CompetitorSynthesis) (string, int, error) {
 	args := m.Called(targetCompany, focusAreas, syntheses)
-	return args.Get(0).(*services.BattlePlan), args.Error(1)
+	return args.String(0), args.Int(1), args.Error(2)
 }
 
-func (m *MockLLMClient) ValidateBattlePlan(plan *services.BattlePlan, targetCompany string, syntheses map[string]*services.CompetitorSynthesis) (*services.BattlePlan, error) {
+func (m *MockLLMClient) GenerateBattlePlan(targetCompany string, focusAreas []string, syntheses map[string]*services.CompetitorSynthesis) (*services.BattlePlan, int, error) {
+	args := m.Called(targetCompany, focusAreas, syntheses)
+	return args.Get(0).(*services.BattlePlan), args.Int(1), args.Error(2)
+}
+
+func (m *MockLLMClient) ValidateBattlePlan(plan *services.BattlePlan, targetCompany string, syntheses map[string]*services.CompetitorSynthesis) (*services.BattlePlan, int, error) {
 	args := m.Called(plan, targetCompany, syntheses)
-	return args.Get(0).(*services.BattlePlan), args.Error(1)
+	return args.Get(0).(*services.BattlePlan), args.Int(1), args.Error(2)
 }
 
 func (m *MockLLMClient) DiscoverCompetitors(companyName string) ([]services.EnrichSimilarCompany, int, error) {
 	args := m.Called(companyName)
 	return args.Get(0).([]services.EnrichSimilarCompany), args.Int(1), args.Error(2)
+}
+
+func (m *MockLLMClient) DiscoverMoreCompetitors(companyName string, exclude []services.EnrichSimilarCompany, needed int) ([]services.EnrichSimilarCompany, int, error) {
+	args := m.Called(companyName, exclude, needed)
+	return args.Get(0).([]services.EnrichSimilarCompany), args.Int(1), args.Error(2)
+}
+
+func (m *MockLLMClient) FormatGoogleSearchQuery(rawQuery string) (string, int, error) {
+	args := m.Called(rawQuery)
+	return args.String(0), args.Int(1), args.Error(2)
 }
 
 func TestSummarizeSessionTitle(t *testing.T) {
@@ -190,10 +205,7 @@ func TestSummarizeSessionTitle(t *testing.T) {
 		router.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusNoContent, rr.Code)
-		var responseBody map[string]string
-		err := json.Unmarshal(rr.Body.Bytes(), &responseBody)
-		assert.NoError(t, err)
-		assert.Equal(t, "", responseBody["title"])
+		assert.Empty(t, rr.Body.Bytes())
 
 		mockMessageRepo.AssertExpectations(t)
 	})
@@ -210,10 +222,7 @@ func TestSummarizeSessionTitle(t *testing.T) {
 		router.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusNoContent, rr.Code)
-		var responseBody map[string]string
-		err := json.Unmarshal(rr.Body.Bytes(), &responseBody)
-		assert.NoError(t, err)
-		assert.Equal(t, "", responseBody["title"])
+		assert.Empty(t, rr.Body.Bytes())
 
 		mockMessageRepo.AssertExpectations(t)
 	})

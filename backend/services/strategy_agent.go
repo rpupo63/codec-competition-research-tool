@@ -3,7 +3,6 @@ package services
 import (
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -80,24 +79,26 @@ type AnalysisParams struct {
 
 // StrategyAgent orchestrates the full 5-step competitive analysis pipeline.
 type StrategyAgent struct {
-	enrichClient   *EnrichClient
-	serpClient     *SerpClient
+	enrichClient   EnrichProvider
+	serpClient     SerpProvider
 	llmClient      LLMClientInterface
 	companyRepo    database.CompanyRepoInterface
 	competitorRepo database.CompetitorRepoInterface
 	dossierRepo    database.IntelDossierRepoInterface
 }
 
-// NewStrategyAgent reads API keys from environment and wires up all clients.
+// NewStrategyAgent wires the agent with injected search/enrichment providers.
 func NewStrategyAgent(
 	companyRepo database.CompanyRepoInterface,
 	competitorRepo database.CompetitorRepoInterface,
 	dossierRepo database.IntelDossierRepoInterface,
 	llmClient LLMClientInterface,
+	serpClient SerpProvider,
+	enrichClient EnrichProvider,
 ) *StrategyAgent {
 	return &StrategyAgent{
-		enrichClient:   NewEnrichClient(os.Getenv("ENRICH_API_KEY")),
-		serpClient:     NewSerpClient(os.Getenv("SERP_API_KEY"), llmClient),
+		enrichClient:   enrichClient,
+		serpClient:     serpClient,
 		llmClient:      llmClient,
 		companyRepo:    companyRepo,
 		competitorRepo: competitorRepo,

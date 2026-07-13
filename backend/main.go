@@ -19,6 +19,7 @@ import (
 	"github.com/rpupo63/report-backend/database"
 	"github.com/rpupo63/report-backend/models"
 	"github.com/rpupo63/report-backend/services"
+	"github.com/rpupo63/report-backend/services/fakes"
 )
 
 // GormLogger implements gorm.io/gorm/logger.Writer interface using zerolog.
@@ -115,19 +116,34 @@ func main() {
 
 	currentDB := database.New(db)
 
-	llmClient := services.NewLLMClient(os.Getenv("GEMINI_API_KEY"))
-	if llmClient == nil {
-		log.Fatal().Msg("GEMINI_API_KEY environment variable is required to initialize LLMClient")
+	var (
+		llmClient    services.LLMClientInterface
+		serpClient   services.SerpProvider
+		enrichClient services.EnrichProvider
+	)
+	if os.Getenv("FAKE_PROVIDERS") == "true" {
+		log.Warn().Msg("FAKE_PROVIDERS=true — using deterministic fake LLM/SERP/Enrich providers (testing only)")
+		llmClient = fakes.NewFakeLLM()
+		serpClient = fakes.NewFakeSerp()
+		enrichClient = fakes.NewFakeEnrich()
+	} else {
+		realLLM := services.NewLLMClient(os.Getenv("GEMINI_API_KEY"))
+		if realLLM == nil {
+			log.Fatal().Msg("GEMINI_API_KEY environment variable is required to initialize LLMClient")
+		}
+		llmClient = realLLM
+		serpClient = services.NewSerpClient(os.Getenv("SERP_API_KEY"), llmClient)
+		enrichClient = services.NewEnrichClient(os.Getenv("ENRICH_API_KEY"))
 	}
 
-	startServer(currentDB, llmClient)
+	startServer(currentDB, llmClient, serpClient, enrichClient)
 }
 
-func startServer(db database.Database, llmClient *services.LLMClient) {
+func startServer(db database.Database, llmClient services.LLMClientInterface, serpClient services.SerpProvider, enrichClient services.EnrichProvider) {
 	errChannel := make(chan error)
 	defer close(errChannel)
 
-	server, err := api.NewServer(db, llmClient)
+	server, err := api.NewServer(db, llmClient, serpClient, enrichClient)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error initializing server")
 	}

@@ -19,12 +19,12 @@ import (
 
 type competitorHandler struct {
 	competitorRepo database.CompetitorRepoInterface
-	serpClient     *services.SerpClient
-	enrichClient   *services.EnrichClient
+	serpClient     services.SerpProvider
+	enrichClient   services.EnrichProvider
 	llmClient      services.LLMClientInterface
 }
 
-func newCompetitorHandler(competitorRepo database.CompetitorRepoInterface, serpClient *services.SerpClient, enrichClient *services.EnrichClient, llmClient services.LLMClientInterface) competitorHandler {
+func newCompetitorHandler(competitorRepo database.CompetitorRepoInterface, serpClient services.SerpProvider, enrichClient services.EnrichProvider, llmClient services.LLMClientInterface) competitorHandler {
 	return competitorHandler{
 		competitorRepo: competitorRepo,
 		serpClient:     serpClient,

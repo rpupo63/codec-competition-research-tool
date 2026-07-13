@@ -49,13 +49,27 @@ func (r *ChatSessionRepo) Create(session models.ChatSession) (*models.ChatSessio
 }
 
 func (r *ChatSessionRepo) UpdateTitle(id uuid.UUID, title string) error {
-	return r.db.Model(&models.ChatSession{}).Where("id = ?", id).Updates(map[string]interface{}{
+	result := r.db.Model(&models.ChatSession{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"title":      title,
 		"updated_at": time.Now(),
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *ChatSessionRepo) Delete(id uuid.UUID) error {
 	// GORM's association deletion with "constraint:OnDelete:CASCADE" handles messages
-	return r.db.Delete(&models.ChatSession{}, "id = ?", id).Error
+	result := r.db.Delete(&models.ChatSession{}, "id = ?", id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

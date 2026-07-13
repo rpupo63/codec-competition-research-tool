@@ -22,7 +22,7 @@ type Server struct {
 	startupTime time.Time
 }
 
-func NewServer(database database.Database, llmClient services.LLMClientInterface) (Server, error) {
+func NewServer(database database.Database, llmClient services.LLMClientInterface, serpClient services.SerpProvider, enrichClient services.EnrichProvider) (Server, error) {
 	c := config.New()
 
 	port := os.Getenv("PORT")
@@ -33,7 +33,7 @@ func NewServer(database database.Database, llmClient services.LLMClientInterface
 
 	startupTime := time.Now()
 
-	router := newRouter(database, llmClient, withConfig(c), withStartupTime(startupTime))
+	router := newRouter(database, llmClient, serpClient, enrichClient, withConfig(c), withStartupTime(startupTime))
 
 	readTimeout := 180 * time.Second
 	writeTimeout := 180 * time.Second
@@ -67,7 +67,7 @@ func withStartupTime(startupTime time.Time) func(*router) {
 	}
 }
 
-func newRouter(database database.Database, llmClient services.LLMClientInterface, opts ...func(*router)) *chi.Mux {
+func newRouter(database database.Database, llmClient services.LLMClientInterface, serpClient services.SerpProvider, enrichClient services.EnrichProvider, opts ...func(*router)) *chi.Mux {
 	var router router
 	for _, opt := range opts {
 		opt(&router)
@@ -81,7 +81,7 @@ func newRouter(database database.Database, llmClient services.LLMClientInterface
 	chiRouter.Use(CORSCheckMiddleware(log.Logger, acceptedOrigins))
 	chiRouter.Use(corsMiddleware(acceptedOrigins))
 
-	handlers := initializeHandlers(database, llmClient)
+	handlers := initializeHandlers(database, llmClient, serpClient, enrichClient)
 	apiRouter := chi.NewRouter()
 	setupRoutes(apiRouter, handlers)
 	chiRouter.Mount("/api", apiRouter)
@@ -93,7 +93,7 @@ func newRouter(database database.Database, llmClient services.LLMClientInterface
 }
 
 func (s Server) Start(errChannel chan<- error) {
-	fmt.Println("Server started on: %s", s.Addr)
+	fmt.Printf("Server started on: %s\n", s.Addr)
 	errChannel <- s.ListenAndServe()
 }
 
