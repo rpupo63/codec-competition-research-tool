@@ -91,13 +91,19 @@ _context-lint:
 
 _repo-check:
     #!/usr/bin/env bash
-    ran=0
-    failed=0
-    if [[ -f pyproject.toml ]] && command -v pytest >/dev/null 2>&1; then
-      ran=1
-      pytest -q || failed=1
+    set -euo pipefail
+    if [[ -f backend/go.mod ]] && command -v go >/dev/null 2>&1; then
+      (cd backend && go build -o /dev/null .)
+      echo "go build: backend OK"
+    else
+      echo "just check: go backend missing" >&2
+      exit 1
     fi
-    if [[ $ran -eq 0 ]]; then
-      echo "just check: no repo-specific checks configured (OK)"
+    if [[ -f frontend/package.json ]] && command -v npm >/dev/null 2>&1; then
+      if [[ -d frontend/node_modules ]]; then
+        npm --prefix frontend run lint --if-present || echo "just check: eslint advisory"
+        npm --prefix frontend run build --if-present
+      else
+        echo "just check: frontend deps not installed — run 'npm --prefix frontend install' (skip build)"
+      fi
     fi
-    exit "$failed"
